@@ -3,7 +3,10 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>InkChat</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+        <title>InkChat API</title>
         <style>
             body {
                 margin: 0;
@@ -28,10 +31,7 @@
                 line-height: 1.05;
                 font-size: 12px;
                 color: #cfe3ff;
-                
-
-
-                /* “hole around cursor” */
+                /* “hole around cursor” 
             -webkit-mask-image: radial-gradient(
                 circle 120px at var(--x, 50%) var(--y, 50%),
                 transparent 0 20px,
@@ -42,6 +42,25 @@
                 transparent 0 20px,
                 rgba(0,0,0,1) 20px,
                 black 140px);
+            */
+            }
+            
+            #links {
+                display: flex;
+                gap: 22px;
+                justify-content: center;
+            }
+
+            #links a {
+  font-family: "Inter", sans-serif;
+
+                color: #f2f6ff;
+                text-decoration: none;
+                letter-spacing: 0.12em;
+                font-size: 24px;
+                opacity: 0.9;
+                text-shadow: 0 0 10px rgba(255, 255, 255, 0.12),
+                0 0 2px rgba(0, 0, 0, 0.7);
             }
 
             /* LOGO */
@@ -49,9 +68,12 @@
                 position: relative;
                 min-height: 100vh;
                 display: flex;
+                flex-direction: column;   /* ADD THIS */
+
                 align-items: center;
                 justify-content: center;
                 color: #e7eef7;
+                gap: 8px;
                 z-index: 1;
             }
             
@@ -78,11 +100,143 @@
     ║██║██║ ╚████║██║ ██╗                ██║  ██║██║  ██║   ██║
     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝                ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
             </pre>
+            
+            <div id="links">
+                <a href="/health">HEALTH</a>
+                <a href="/mta">MTA</a>
+                <a href="/weather">WEATHER</a>
+            </div>
+
         </div>
         
         <script>
             const binary = document.getElementById("binary");
 
+            // Grid + cursor state
+            let cols = 0,rows = 0;
+            let grid = []; // array of strings
+            let cursorCol = -9999, cursorRow = -9999;
+            let rafPending = false;
+
+            // EXACTLY 4 characters total -> 2x2 block
+            const BOX_COLS = 2;
+            const BOX_ROWS = 2;
+
+            // Shift the erase block slightly right/down from the actual pointer
+            const OFFSET_X_PX = 3;
+            const OFFSET_Y_PX = 2;
+
+            // Must match CSS overscan (translate -24px, -24px and +48px size)
+            const OVERSCAN_PX = 48;
+
+            function measureChar() {
+                const probe = document.createElement("span");
+                const cs = getComputedStyle(binary);
+
+                probe.textContent = "0";
+                probe.style.position = "fixed";
+                probe.style.left = "-9999px";
+                probe.style.top = "-9999px";
+                probe.style.visibility = "hidden";
+                probe.style.fontFamily = cs.fontFamily;
+                probe.style.fontSize = cs.fontSize;
+                probe.style.lineHeight = cs.lineHeight;
+                probe.style.whiteSpace = "pre";
+
+                document.body.appendChild(probe);
+                const rect = probe.getBoundingClientRect();
+                probe.remove();
+
+                return { w: rect.width || 1, h: rect.height || 1 };
+            }
+
+            function randBit() {
+                return Math.random() < 0.5 ? "0" : "1";
+            }
+
+            function buildGrid() {
+                const { w, h } = measureChar();
+
+                cols = Math.ceil((window.innerWidth + OVERSCAN_PX) / w) + 2;
+                rows = Math.ceil((window.innerHeight + OVERSCAN_PX) / h) + 2;
+
+                grid = new Array(rows);
+                for (let r = 0; r < rows; r++) {
+                let line = "";
+                for (let c = 0; c < cols; c++) line += randBit();
+                grid[r] = line;
+                }
+
+                render();
+            }
+
+            function render() {
+                const cStart = cursorCol;
+                const rStart = cursorRow;
+
+                let out = "";
+
+                for (let r = 0; r < rows; r++) {
+                // fast path: rows outside the 2-row erase block
+                if (r < rStart || r >= rStart + BOX_ROWS) {
+                    out += grid[r] + "\n";
+                    continue;
+                }
+
+                const base = grid[r];
+                let rowArr = base.split("");
+
+                // erase 2 columns in this row (2x2 total across 2 rows)
+                for (let c = cStart; c < cStart + BOX_COLS; c++) {
+                    if (c >= 0 && c < cols) rowArr[c] = " ";
+                }
+
+                out += rowArr.join("") + "\n";
+                }
+
+                binary.textContent = out;
+            }
+
+            function scheduleRender() {
+                if (rafPending) return;
+                rafPending = true;
+                requestAnimationFrame(() => {
+                rafPending = false;
+                render();
+                });
+            }
+
+            function setCursor(e) {
+                const rect = binary.getBoundingClientRect();
+
+                // Because #binary is overscanned and translated -24px,-24px,
+                // rect.left/top are negative; this math still correctly maps.
+                const x = e.clientX - rect.left + OFFSET_X_PX;
+                const y = e.clientY - rect.top + OFFSET_Y_PX;
+
+                const { w, h } = measureChar();
+
+                cursorCol = Math.floor(x / w);
+                cursorRow = Math.floor(y / h);
+
+                scheduleRender();
+            }
+
+            window.addEventListener("mousemove", setCursor);
+
+            window.addEventListener(
+                "touchmove",
+                (e) => {
+                const t = e.touches[0];
+                setCursor(t);
+                },
+                { passive: true }
+            );
+
+            window.addEventListener("resize", buildGrid);
+
+            buildGrid();
+            /*
             function measureChar() {
                 // Create a hidden probe that matches #binary styles
                 const probe = document.createElement("span");
@@ -143,7 +297,8 @@
                 },
                 { passive: true }
             );
-            </script>
+            */
+        </script>
 
     </body>
     
