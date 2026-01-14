@@ -23,8 +23,6 @@ const WEATHER_URL =
 const app = express();
 app.use(cors());
 
-app.listen(8787, "0.0.0.0", () => console.log("Listening on 8787"));
-
 app.get("/health", (req, res) => {
   res.json({ ok: true});  
 });
