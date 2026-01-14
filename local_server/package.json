@@ -1,0 +1,9 @@
+{
+  "name": "inkchat",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "gtfs-realtime-bindings": "^1.1.1"
+  }
+}
