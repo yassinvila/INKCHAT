@@ -1,0 +1,15 @@
+{
+  "name": "mta-proxy",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MTA and Weather API Proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "gtfs-realtime-bindings": "^1.1.0"
+  }
+}

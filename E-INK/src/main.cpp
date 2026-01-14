@@ -5,28 +5,24 @@
 
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
+#include <Fonts/FreeMonoBold12pt7b.h>
 #include "api.h"
 #include "icon.h"
 
 
 // ------------------------------- PINS ----------------------------- //
+static const int ENC_SW  = 25;  // moved to GPIO25 to try a different button pin
+static const int ENC_CLK = 32;
+static const int ENC_DT  = 33;
 static const int EPD_CS   = 5;
 static const int EPD_DC   = 14;
 static const int EPD_RST  = 16;  // if boot issues: change to 16 and rewire
 static const int EPD_BUSY = 4;
 
 // ------------------------------- WiFi ----------------------------- //
-// WiFi credentials: set via platformio.ini build_flags or .env file
-// (See .env.example for setup instructions)
-#ifndef WIFI_SSID
-#define WIFI_SSID "SET_WIFI_SSID"
-#endif
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "SET_WIFI_PASSWORD"
-#endif
-
-const char* SSID = WIFI_SSID;
-const char* PASSWORD = WIFI_PASSWORD;
+// HARDCODED WiFi credentials
+const char* SSID = "My 2G";
+const char* PASSWORD = "newyork@10";  // ← Replace with your password
 
 // ------------------------------- LINKS ----------------------------- //
 static const char* TIMEZONE = "EST5EDT,M3.2.0/2,M11.1.0/2";
@@ -36,6 +32,7 @@ const char* WEATHER_URL = "http://192.168.1.205:8787/weather";
 // ------------------------------- FONT ----------------------------- //
 static const GFXfont* FONT = &FreeMonoBold9pt7b;
 static const GFXfont* FONT_BIG = &FreeMonoBold24pt7b;
+static const GFXfont* FONT_MED = &FreeMonoBold12pt7b;
 
 // ------------------------------- MTA (storage) ----------------------------- //
 static const int MAX_ARR = 5;
@@ -49,12 +46,15 @@ int   weatherStartIndex = 0;
 int   weatherCount = 0;
 int   wTemp[WEATHER_MAX] = {0};
 float wPrec[WEATHER_MAX] = {0};
-int   wCode[WEATHER_MAX] = {0};
+int   wCode[WEATHER_MAX];  // Initialized to -1 in setup()
 int   wDay[WEATHER_MAX]  = {0};
 
 // ------------------------------- SCREENS ----------------------------- //
 enum Screen : uint8_t { SCREEN_TIME, SCREEN_MTA, SCREEN_WEATHER };
 static Screen currentScreen = SCREEN_TIME;
+
+// Manual navigation state: 0=TIME, 1=MTA, 2=WEATHER page0, 3=WEATHER page1, 4=WEATHER page2
+static int navState = 0;
 
 static unsigned long lastSwitchMs = 0;
 static const unsigned long SWITCH_EVERY_MS = 60000; // 1 minute
@@ -70,10 +70,9 @@ static const int SCREEN_H = 480;
 static const int HALF_H   = 240;
 
 // Manual screen control via serial "encoder"
-static int selectedScreen = 0;          // 0 TIME, 1 MTA, 2 WEATHER
 static bool manualMode = true;          // disable auto-rotation when true
 
-// Icon boxes (160x160)
+// Icon boxes (for MTA screen)
 static const int ICON_W   = 160;
 static const int ICON_H   = 160;
 static const int ICON_X   = 20;
@@ -103,10 +102,10 @@ static const int ICON_Y_BOT = 300;
 static const int TRAIN_TEXT_DY = -18;
 static const int MIN_TEXT_DY   =  26;
 
-// WEATHER layout (200x200 everywhere for now)
-static const int ICON_SIDE_W = 200;
-static const int ICON_SIDE_H = 200;
-static const int ICON_MID_W  = 200;
+// WEATHER layout icon sizes
+static const int ICON_SIDE_W = 160;  // Left and right blocks
+static const int ICON_SIDE_H = 160;
+static const int ICON_MID_W  = 200;  // Middle block
 static const int ICON_MID_H  = 200;
 
 // x positions for 3x 200px icons on 800px width
@@ -124,6 +123,9 @@ static const int ICON_TEXT_Y0 = 255;
 // middle 6-hour rows area
 static const int ROWS_X = 240;
 static const int ROWS_Y = 280;
+
+// Invert rotary direction if wiring is flipped
+static const bool ROTARY_INVERT = true;
 // ---------------- 7.5" 800x480 Good Display (UC8179) -------------- //
 GxEPD2_BW<GxEPD2_750_GDEY075T7, GxEPD2_750_GDEY075T7::HEIGHT> display(
   GxEPD2_750_GDEY075T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
@@ -150,18 +152,28 @@ static void drawMtaHalf(int y0, bool isNorth);
 static int safeIdx(int idx);
 static bool hasIdx(int idx);
 static int dayBaseIndexFromPage(uint8_t page);
-static void drawXbmCrop(int x, int y, const unsigned char* bmp, int srcW, int srcH, int drawW, int drawH);
-static void drawTopIconBlock(int x, int y, int w, int h, int dayBaseIdx, bool emptySlot);
+static void draw1bppWhiteOnBlack(int x, int y, int w, int h, const unsigned char* bmp);
+static void drawTopIconBlock(int x, int y, int w, int h, int dayBaseIdx, bool emptySlot, bool forceMoon);
 static void drawSixHourRows(int startIdx);
 static void handleSerialEncoder();
+static int8_t read_rotary();
 static void goToScreen(Screen s);
+static void applyNavState();
 
 // ------------------------------- SETUP ----------------------------- //
 void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("BOARD CONNECTED");
-
+  pinMode(ENC_SW, INPUT_PULLUP);
+  pinMode(ENC_CLK, INPUT_PULLUP);
+  pinMode(ENC_DT, INPUT_PULLUP);
+  
+  // Initialize all weather codes to -1 (no data)
+  for (int i = 0; i < WEATHER_MAX; i++) {
+    wCode[i] = -1;
+  }
+  
   displayInit();
   if (wifiConnect()) {
     timeSync();
@@ -197,7 +209,7 @@ void loop() {
       lastWeatherFlipMs = now;
       updateWeatherPartial();
     }
-    else {
+    else if (currentScreen == SCREEN_WEATHER) {
       currentScreen = SCREEN_TIME;
       drawTimeScreen();
     }
@@ -207,7 +219,7 @@ void loop() {
     updateTimePartialEveryMinute();
   }
 
-  if (currentScreen == SCREEN_WEATHER) {
+  if (!manualMode && currentScreen == SCREEN_WEATHER) {
     if (now - lastWeatherFlipMs >= WEATHER_FLIP_EVERY_MS) {
       lastWeatherFlipMs = now;
       weatherPage = (weatherPage + 1) % 3;
@@ -272,7 +284,7 @@ bool wifiConnect() {
       display.print("Testing Connection");
 
       if (ok) {
-        display.setCursor(330, 245);
+        display.setCursor(345, 245);
         display.print("Success");
       } else {
         if (attempt < 3) {
@@ -304,7 +316,7 @@ bool timeSync() {
   unsigned long start = millis();
   struct tm timeinfo;
 
-  while (millis() - start < 8000) {
+  while (millis() - start < 5000) {
     if (getLocalTime(&timeinfo, 200)) {
       Serial.println("Time Recieved");
       return true;
@@ -340,18 +352,19 @@ void drawTimeScreen() {
     display.setTextColor(GxEPD_BLACK);
 
     display.setFont(FONT);
-    display.setCursor(330, 20);
+    display.setCursor(360, 20);
     display.print("TIME");
     display.drawLine(0, 30, 799, 30, GxEPD_BLACK);
 
-    display.setCursor(310, 120);
-    display.print("Hello, Yassin!");
-
-    display.drawRect(200, 140, 400, 200, GxEPD_BLACK);
-
+    display.setFont(FONT_MED);
+    display.setCursor(290, 130);
+    display.print("Hello, PitchFest!");
+    
     display.setFont(FONT_BIG);
-    display.setCursor(300, 260);
+    display.setTextSize(2);  // make time larger
+    display.setCursor(250, 250);
     display.print(timeStr);
+    display.setTextSize(1);  // reset size for other text
   } while (display.nextPage());
 }
 
@@ -374,14 +387,13 @@ void updateTimePartialEveryMinute() {
   do {
     display.fillScreen(GxEPD_WHITE);
     display.setTextColor(GxEPD_BLACK);
-
-    // Redraw the box border (because we cleared the partial area)
-    display.drawRect(200, 140, 400, 200, GxEPD_BLACK);
-
+    
     // Redraw the time (big)
     display.setFont(FONT_BIG);
-    display.setCursor(300, 260);
+    display.setTextSize(2);  // larger time readout
+    display.setCursor(250, 250);
     display.print(t);
+    display.setTextSize(1);
 
   } while (display.nextPage());
 }
@@ -400,12 +412,29 @@ static void drawMtaHalf(int y0, bool isNorth)
     display.print("Southbound");
   }
 
-  // Icon placeholder box (160x160)
-  int iconY = isNorth ? ICON_Y_TOP : ICON_Y_BOT;
+  // Icon placeholder box (160x160) with train icon
+  int iconY;
+  if (isNorth) {
+    iconY = ICON_Y_TOP;
+  } else {
+    iconY = ICON_Y_BOT;
+  }
   display.drawRect(ICON_X, iconY, ICON_W, ICON_H, GxEPD_BLACK);
+  
+  // Draw train icon inside the box
+  const unsigned char* trainIcon = isNorth ? train_north : train_south;
+  if (trainIcon != nullptr) {
+    // Center the 160x160 icon in the 160x160 box
+    draw1bppWhiteOnBlack(ICON_X, iconY, ICON_W, ICON_H, trainIcon);
+  }
 
   // ------------------- Route "station" marker like: *\  \_  -------------------
-  int routeY = isNorth ? ROUTE_Y_TOP : ROUTE_Y_BOT;
+  int routeY;
+  if (isNorth) {
+    routeY = ROUTE_Y_TOP;
+  } else {
+    routeY = ROUTE_Y_BOT;
+  }
 
   // Star (station) as text
   display.setFont(FONT);
@@ -467,7 +496,7 @@ void drawMTAScreen()
 
     // Header top centered-ish (hard-coded)
     display.setCursor(370, 20);
-    display.print("MTA");
+    display.print("THE N TRAIN");
     display.drawLine(0, 30, 799, 30, GxEPD_BLACK);
 
     // Split line across middle (horizontal)
@@ -488,7 +517,7 @@ void updateMtaDotsPartial() {
   // X: start at ROUTE_X-10, width to end
   // Y: from top route band down to bottom route band region
   const int PX = ROUTE_X - 10;
-  const int PY = 80;
+  const int PY = 70;  // moved up to include the middle line at Y=239
   const int PW = SCREEN_W - PX;
   const int PH = SCREEN_H - PY - 20;
 
@@ -527,49 +556,67 @@ static int dayBaseIndexFromPage(uint8_t page) {
   return safeIdx(weatherStartIndex + (dayOffset * 24));
 }
 
-// Draw cropped region from an XBM-style 1bpp bitmap (LSB-first).
-// INVERTED POLARITY: 0-bits = black pixels (icon), 1-bits = white (background).
-static void drawXbmCrop(int x, int y, const unsigned char* bmp, int srcW, int srcH, int drawW, int drawH) {
-  const int srcBytesPerRow = (srcW + 7) / 8;
-  const int h = (drawH > srcH) ? srcH : drawH;
-  const int w = (drawW > srcW) ? srcW : drawW;
-  for (int row = 0; row < h; row++) {
-    const int rowOffset = row * srcBytesPerRow;
-    for (int col = 0; col < w; col++) {
-      const int byteIndex = rowOffset + (col >> 3);
-      uint8_t byteVal = pgm_read_byte(&bmp[byteIndex]);
-      bool bitSet = byteVal & (1 << (col & 7)); // LSB-first (XBM)
-      if (!bitSet) {  // Draw black when bit is 0 (inverted polarity)
-        display.drawPixel(x + col, y + row, GxEPD_BLACK);
-      }
-    }
-  }
+// Helper: Draw 1bpp bitmap as BLACK on WHITE
+static void draw1bppWhiteOnBlack(int x, int y, int w, int h, const unsigned char* bmp) {
+  if (bmp == nullptr) return;
+  display.drawBitmap(x, y, bmp, w, h, GxEPD_BLACK, GxEPD_WHITE);
 }
 
-static void drawTopIconBlock(int x, int y, int w, int h, int dayBaseIdx, bool emptySlot) {
-  display.drawRect(x, y, w, h, GxEPD_BLACK);
-
-  // pick a representative hour for the day block (midday-ish)
-  int midIdx = dayBaseIdx + 12;
-
-  // empty slot rule OR out-of-range -> placeholder icon
-  const unsigned char* bmp = clear_night;
-  if (!emptySlot && hasIdx(midIdx)) {
-    bmp = mapWeatherIcon(wCode[midIdx], wDay[midIdx]);
+static void drawTopIconBlock(int x, int y, int w, int h, int dayBaseIdx, bool emptySlot, bool forceMoon) {
+  // If forceMoon is true, show unknown icon (no data)
+  if (forceMoon) {
+    // Clear the area first
+    display.fillRect(x, y, w, h, GxEPD_WHITE);
+    
+    const unsigned char* bmp;
+    if (w == 200 && h == 200) {
+      bmp = unknown_200;
+    } else if (w == 160 && h == 160) {
+      bmp = unknown_160;
+    } else {
+      bmp = unknown_200;
+    }
+    
+    if (bmp != nullptr) {
+      draw1bppWhiteOnBlack(x, y, w, h, bmp);
+    }
+    return;
   }
 
-  // Draw big icon with inverted polarity (0-bits = black)
-  const int srcBytesPerRow = (w + 7) / 8;
-  for (int row = 0; row < h; row++) {
-    const int rowOffset = row * srcBytesPerRow;
-    for (int col = 0; col < w; col++) {
-      const int byteIndex = rowOffset + (col >> 3);
-      uint8_t byteVal = pgm_read_byte(&bmp[byteIndex]);
-      bool bitSet = byteVal & (1 << (col & 7)); // LSB-first
-      if (!bitSet) {  // Draw black when bit is 0 (inverted polarity)
-        display.drawPixel(x + col, y + row, GxEPD_BLACK);
-      }
+  // Pick representative hour for day block (midday-ish: +12 hours)
+  int midIdx = dayBaseIdx + 12;
+
+  // Empty slot or out-of-range: show unknown icon instead of blank
+  if (emptySlot || !hasIdx(midIdx)) {
+    display.fillRect(x, y, w, h, GxEPD_WHITE);
+    
+    const unsigned char* bmp;
+    if (w == 200 && h == 200) {
+      bmp = unknown_200;
+    } else if (w == 160 && h == 160) {
+      bmp = unknown_160;
+    } else {
+      bmp = unknown_200;
     }
+    
+    if (bmp != nullptr) {
+      draw1bppWhiteOnBlack(x, y, w, h, bmp);
+    }
+    return;
+  }
+
+  // Get correct-sized bitmap based on block dimensions
+  const unsigned char* bmp;
+  if (w == 200 && h == 200) {
+    bmp = mapWeatherIcon200(wCode[midIdx], wDay[midIdx]);
+    draw1bppWhiteOnBlack(x, y, w, h, bmp);
+  } else if (w == 160 && h == 160) {
+    bmp = mapWeatherIcon160(wCode[midIdx], wDay[midIdx]);
+    draw1bppWhiteOnBlack(x, y, w, h, bmp);
+  } else {
+    // Fallback to 200 if size doesn't match expected
+    bmp = mapWeatherIcon200(wCode[midIdx], wDay[midIdx]);
+    draw1bppWhiteOnBlack(x, y, w, h, bmp);
   }
 }
 
@@ -583,53 +630,49 @@ static void drawSixHourRows(int startIdx) {
   const int tileW = 120;          // width of each tile
   const int tileH = 120;          // height of each tile
   const int gap = 10;             // horizontal gap between tiles
-  const int iconSize = 50;        // icon side inside the tile
+  const int iconSize = 48;        // icon size (48x48)
 
   // Offsets within the tile
   const int timeOffsetX = 8;
   const int timeOffsetY = 18;
-  const int iconOffsetY = 40;     // vertical position of icon top inside the tile
+  const int iconOffsetY = 38;     // vertical position of icon top inside the tile
   const int textOffsetX = 8;
-  const int textOffsetY = iconOffsetY + iconSize + 20; // below icon
+  const int textOffsetY = iconOffsetY + iconSize + 12; // below icon
 
-  const bool DEBUG_WEATHER_CARDS = true; // draw tile and icon rectangles
+  const bool DEBUG_WEATHER_CARDS = false; // disable outlines
 
   // Draw 6 tiles with 4-hour stepping
   for (int i = 0; i < 6; i++) {
     // Compute dataIndex: 4-hour steps (0, 4, 8, 12, 16, 20)
     int dataIdx = startIdx + (i * 4);
     
-    // Bounds check: skip if out of range (weatherCount is per-day slice, check absolute bounds)
+    // Bounds check: skip if out of range
     if (dataIdx < 0 || dataIdx >= WEATHER_MAX) continue;
 
     // Horizontal placement: same Y, increment X per tile
     int tileX = startX + i * (tileW + gap);
     int tileY = startY;
 
-    if (DEBUG_WEATHER_CARDS) {
-      display.drawRect(tileX, tileY, tileW, tileH, GxEPD_BLACK);
-    }
+    // Draw box around the tile
+    display.drawRect(tileX, tileY, tileW, tileH, GxEPD_BLACK);
 
     // LABEL: (i+1)*4 → 04:00, 08:00, 12:00, 16:00, 20:00, 24:00
     int hoursAhead = (i + 1) * 4;
-    display.setCursor(tileX + timeOffsetX, tileY + timeOffsetY);
+    display.setCursor(tileX + timeOffsetX + 15, tileY + timeOffsetY);
     char buf[6];
     snprintf(buf, sizeof(buf), "%02d:00", hoursAhead);
     display.print(buf);
 
-    // ICON (centered in tile)
-    const unsigned char* rbmp = mapWeatherIcon(wCode[dataIdx], wDay[dataIdx]);
+    // ICON (48x48, centered in tile)
+    const unsigned char* bmp = mapWeatherIcon48(wCode[dataIdx], wDay[dataIdx]);
     int iconX = tileX + (tileW - iconSize) / 2;
     int iconY = tileY + iconOffsetY;
-    if (DEBUG_WEATHER_CARDS) {
-      display.drawRect(iconX, iconY, iconSize, iconSize, GxEPD_BLACK);
-    }
-    drawXbmCrop(iconX, iconY, rbmp, 200, 200, iconSize, iconSize);
+    draw1bppWhiteOnBlack(iconX, iconY - 10, iconSize, iconSize, bmp);
 
     // TEMP + PRECIP
-    display.setCursor(tileX + textOffsetX, tileY + textOffsetY);
+    display.setCursor(tileX + textOffsetX - 10, tileY + textOffsetY);
     display.print(wTemp[dataIdx]);
-    display.print("F  ");
+    display.print("F ");
     display.print(wPrec[dataIdx], 2);
     display.print("in");
   }
@@ -703,23 +746,77 @@ void updateWeatherPartial() {
     display.fillScreen(GxEPD_WHITE);
     display.setTextColor(GxEPD_BLACK);
 
-    drawTopIconBlock(ICON_L_X, ICON_SIDE_Y, ICON_SIDE_W, ICON_SIDE_H, leftBase, leftEmpty);
-    drawTopIconBlock(ICON_M_X, ICON_MID_Y,  ICON_MID_W,  ICON_MID_H,  midBase,  midEmpty);
-    drawTopIconBlock(ICON_R_X, ICON_SIDE_Y, ICON_SIDE_W, ICON_SIDE_H, rightBase, rightEmpty);
+    // page 0: left = moon (yesterday), page 2: right = moon (day after)
+    bool leftMoon = (weatherPage == 0);
+    bool rightMoon = (weatherPage == 2);
+
+    drawTopIconBlock(ICON_L_X, ICON_SIDE_Y, ICON_SIDE_W, ICON_SIDE_H, leftBase, leftEmpty, leftMoon);
+    drawTopIconBlock(ICON_M_X, ICON_MID_Y,  ICON_MID_W,  ICON_MID_H,  midBase,  midEmpty, false);
+    drawTopIconBlock(ICON_R_X, ICON_SIDE_Y, ICON_SIDE_W, ICON_SIDE_H, rightBase, rightEmpty, rightMoon);
+
+    // Day labels underneath icons
+    display.setFont(FONT);
+    display.setTextColor(GxEPD_BLACK);
+    const int labelY = 225;
+    
+    if (weatherPage == 0) {
+      display.setCursor(ICON_L_X + 30, labelY - 20);
+      display.print("Yesterday");
+      display.setCursor(ICON_M_X + 80, labelY + 10);
+      display.print("Today");
+      display.setCursor(ICON_R_X + 50, labelY - 10);
+      display.print("Tomorrow");
+    } else if (weatherPage == 1) {
+      display.setCursor(ICON_L_X + 50, labelY - 20);
+      display.print("Today");
+      display.setCursor(ICON_M_X + 35, labelY);
+      display.print("Tomorrow");
+      display.setCursor(ICON_R_X + 10, labelY - 20);
+      display.print("Following Day");
+    } else {
+      display.setCursor(ICON_L_X + 40, labelY - 10);
+      display.print("Tomorrow");
+      display.setCursor(ICON_M_X + 15, labelY);
+      display.print("Following Day");
+      display.setCursor(ICON_R_X, labelY - 15);
+      display.print("The Third Morrow");
+    }
 
     drawSixHourRows(midBase);
   } while (display.nextPage());
+}
+
+static void applyNavState() {
+  // Map navState -> screen + weatherPage
+  if (navState == 0) {
+    currentScreen = SCREEN_TIME;
+    drawTimeScreen();
+  } else if (navState == 1) {
+    currentScreen = SCREEN_MTA;
+    drawMTAScreen();
+    if (mtaFetch()) updateMtaDotsPartial();
+  } else {
+    currentScreen = SCREEN_WEATHER;
+    weatherPage = navState - 2; // 0,1,2
+    weatherFetch();
+    drawWeatherScreen();
+    lastWeatherFlipMs = millis();
+    updateWeatherPartial();
+  }
 }
 
 static void goToScreen(Screen s) {
   currentScreen = s;
 
   if (currentScreen == SCREEN_TIME) {
+    navState = 0;
     drawTimeScreen();
   } else if (currentScreen == SCREEN_MTA) {
+    navState = 1;
     drawMTAScreen();
     if (mtaFetch()) updateMtaDotsPartial();
   } else { // SCREEN_WEATHER
+    navState = 2; // reset to first weather page
     weatherFetch();
     drawWeatherScreen();
     weatherPage = 0;
@@ -728,29 +825,83 @@ static void goToScreen(Screen s) {
   }
 }
 
-static void handleSerialEncoder() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
+// Rotary encoder state machine (robust method)
+static int8_t read_rotary() {
+  static int8_t rot_enc_table[] = {0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0};
+  static uint8_t prevNextCode = 0;
+  static uint16_t store = 0;
 
-    if (c == '\n' || c == '\r') continue;
+  prevNextCode <<= 2;
+  if (digitalRead(ENC_DT)) prevNextCode |= 0x02;  // DATA
+  if (digitalRead(ENC_CLK)) prevNextCode |= 0x01; // CLK
+  prevNextCode &= 0x0f;
 
-    if (c == 'a') {
-      selectedScreen = (selectedScreen + 2) % 3; // -1 mod 3
-      Serial.println("ENC: LEFT");
-      goToScreen((Screen)selectedScreen);
-      lastSwitchMs = millis();
+  // If valid then store as 16 bit data
+  if (rot_enc_table[prevNextCode]) {
+    store <<= 4;
+    store |= prevNextCode;
+    
+    // Debug: show pattern
+    Serial.print("Pattern: 0x");
+    Serial.println(store & 0xff, HEX);
+    
+    uint8_t code = store & 0xff;
+    if (code == 0x2b) {
+      Serial.println(">>> Detected 0x2b");
+      store = 0; // reset so we don't double-fire on overlap
+      return ROTARY_INVERT ? 1 : -1; // treat as CCW unless inverted
     }
-    else if (c == 'd') {
-      selectedScreen = (selectedScreen + 1) % 3;
-      Serial.println("ENC: RIGHT");
-      goToScreen((Screen)selectedScreen);
-      lastSwitchMs = millis();
-    }
-    else if (c == 's') {
-      Serial.println("ENC: PRESS");
-      goToScreen((Screen)selectedScreen);
-      lastSwitchMs = millis(); // reset auto timer so it doesn't instantly switch
+
+    // CW patterns observed on this hardware (including bouncy variants)
+    if (code == 0x17 || code == 0xd4 || code == 0xe8 ||
+      code == 0xeb || code == 0xbe || code == 0xbd ||
+      code == 0xd7 || code == 0x7e || code == 0xe7 ||
+      code == 0x0e || code == 0x0b) {
+      Serial.print(">>> Detected CW pattern 0x");
+      Serial.println(code, HEX);
+      store = 0; // reset to avoid emitting two signals per detent
+      return ROTARY_INVERT ? -1 : 1;  // flip if wiring inverted
     }
   }
+  return 0;
 }
 
+static void handleSerialEncoder() {
+  static unsigned long lastBtnMs = 0;
+  static int lastBtn = HIGH;
+  unsigned long now = millis();
+
+  // ROTATION: use robust state machine
+  int8_t rotaryVal = read_rotary();
+  if (rotaryVal != 0) {
+    if (rotaryVal < 0) {
+      // LEFT
+      navState = (navState + 4) % 5;
+      Serial.print("ENC ROTATE: LEFT (state=");
+      Serial.print(navState);
+      Serial.println(")");
+    } else {
+      // RIGHT
+      navState = (navState + 1) % 5;
+      Serial.print("ENC ROTATE: RIGHT (state=");
+      Serial.print(navState);
+      Serial.println(")");
+    }
+    applyNavState();
+    manualMode = true;
+    lastSwitchMs = now;
+  }
+
+  // BUTTON edge detection
+  int btn = digitalRead(ENC_SW);
+  if (btn == LOW && lastBtn == HIGH) {
+    if (now - lastBtnMs > 50) {
+      Serial.println("ENC BUTTON: PRESS");
+      applyNavState();
+      manualMode = true;
+      lastSwitchMs = now;
+      lastBtnMs = now;
+    }
+  }
+  lastBtn = btn;
+}
