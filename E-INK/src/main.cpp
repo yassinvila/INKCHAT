@@ -26,8 +26,8 @@ const char* PASSWORD = "newyork@10";  // ← Replace with your password
 
 // ------------------------------- LINKS ----------------------------- //
 static const char* TIMEZONE = "EST5EDT,M3.2.0/2,M11.1.0/2";
-const char* MTA_URL = "http://192.168.1.205:8787/mta";
-const char* WEATHER_URL = "http://192.168.1.205:8787/weather";
+const char* MTA_URL = "https://inkchat-ruby.vercel.app/mta";
+const char* WEATHER_URL = "https://inkchat-ruby.vercel.app/weather";
 
 // ------------------------------- FONT ----------------------------- //
 static const GFXfont* FONT = &FreeMonoBold9pt7b;

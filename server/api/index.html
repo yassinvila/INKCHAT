@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>    
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>InkChat</title>
+        <style>
+            body {
+                margin: 0;
+                min-height: 100vh;
+                background: #0b0f14; /* your base background */
+                overflow: hidden;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            }
+
+            /* ASCII background layer */
+            #binary {
+                transform: translate(-24px, -24px);
+                width: calc(100vw + 48px);
+                height: calc(100vh + 48px);            
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                display: block;
+                opacity: 0.28;
+                pointer-events: none;
+                white-space: pre;
+                line-height: 1.05;
+                font-size: 12px;
+                color: #cfe3ff;
+                
+
+
+                /* “hole around cursor” */
+            -webkit-mask-image: radial-gradient(
+                circle 120px at var(--x, 50%) var(--y, 50%),
+                transparent 0 20px,
+                rgba(0,0,0,0.85) 20px,
+                black 140px);
+            mask-image: radial-gradient(
+                circle 120px at var(--x, 50%) var(--y, 50%),
+                transparent 0 20px,
+                rgba(0,0,0,1) 20px,
+                black 140px);
+            }
+
+            /* LOGO */
+            #content {
+                position: relative;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #e7eef7;
+                z-index: 1;
+            }
+            
+            #content pre {
+                margin: 0;
+                white-space: pre;
+                line-height: 1.1;
+                color: #f2f6ff;
+                text-shadow: 0 0 14px rgba(255, 255, 255, 0.18),
+                             0 0 2px rgba(0, 0, 0, 0.7);
+            }
+    </style>
+    </head>
+
+    <body>
+        <pre id="binary"></pre>
+
+        <div id="content">
+            <pre>
+    ║██║███╗   ██╗██╗ ██╗                ██╗  ██╗ █████╗ ████████╗
+    ║██║████╗  ██║██║██╔╝  ╔══════════╗  ██║  ██║██╔══██╗╚══██╔══╝
+    ║██║██╔██╗ ██║█████╔   ║██████████║  ███████║███████║   ██║
+    ║██║██║╚██╗██║██╔██╗   ╚══════════╝  ██╔══██║██╔══██║   ██║
+    ║██║██║ ╚████║██║ ██╗                ██║  ██║██║  ██║   ██║
+    ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝                ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+            </pre>
+        </div>
+        
+        <script>
+            const binary = document.getElementById("binary");
+
+            function measureChar() {
+                // Create a hidden probe that matches #binary styles
+                const probe = document.createElement("span");
+                const cs = getComputedStyle(binary);
+
+                probe.textContent = "0";
+                probe.style.position = "fixed";
+                probe.style.left = "-9999px";
+                probe.style.top = "-9999px";
+                probe.style.visibility = "hidden";
+                probe.style.fontFamily = cs.fontFamily;
+                probe.style.fontSize = cs.fontSize;
+                probe.style.lineHeight = cs.lineHeight;
+                probe.style.whiteSpace = "pre";
+
+                document.body.appendChild(probe);
+                const rect = probe.getBoundingClientRect();
+                probe.remove();
+
+                return { w: rect.width || 1, h: rect.height || 1 };
+            }
+
+            function buildPattern() {
+                const { w, h } = measureChar();
+
+                // Add padding so we never under-fill due to rounding
+                const cols = Math.ceil(window.innerWidth / w) + 2;
+                const rows = Math.ceil(window.innerHeight / h) + 2;
+
+                // Binary noise (looks better than stripes)
+                let out = "";
+                for (let r = 0; r < rows; r++) {
+                let line = "";
+                for (let c = 0; c < cols; c++) line += Math.random() < 0.5 ? "0" : "1";
+                out += line + "\n";
+                }
+                binary.textContent = out;
+            }
+
+            buildPattern();
+            window.addEventListener("resize", buildPattern);
+
+            function setCursorVars(e) {
+                const rect = binary.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                binary.style.setProperty("--x", x + "px");
+                binary.style.setProperty("--y", y + "px");
+            }
+
+            window.addEventListener("mousemove", setCursorVars);
+
+            window.addEventListener(
+                "touchmove",
+                (e) => {
+                const t = e.touches[0];
+                setCursorVars(t);
+                },
+                { passive: true }
+            );
+            </script>
+
+    </body>
+    
+</html>
+    
