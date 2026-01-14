@@ -1,7 +1,6 @@
 {
   "rewrites": [
-    { "source": "/health", "destination": "/api/health" },
-    { "source": "/mta", "destination": "/api/mta" },
-    { "source": "/weather", "destination": "/api/weather" }
+    { "source": "/health", "destination": "/api?path=health" },
+    { "source": "/api/:path*", "destination": "/api?path=:path*" }
   ]
 }

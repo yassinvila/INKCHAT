@@ -19,6 +19,7 @@ const WEATHER_URL =
 //Daily Temp Min, Temp Max, Weather Code
 
 export default async function handler(req, res) {
+  console.log("HIT", req.method, req.url);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -29,15 +30,17 @@ export default async function handler(req, res) {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname;
 
-  if (path === "/api/health") {
+  // this will be "health", "weather", "mta", etc.
+  const route = url.searchParams.get("path") || "";
+
+  if (path === "health") {
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     return res.end(JSON.stringify({ ok: true }));
   }
 
-  if (path === "/api/mta") {
+  if (path === "mta") {
     try {
       const mtaRes = await fetch(MTA_URL_N);
       if (!mtaRes.ok) {
@@ -125,7 +128,7 @@ export default async function handler(req, res) {
     }
   }
 
-  if (path === "/api/weather") {
+  if (path === "weather") {
     try {
       const weatherRes = await fetch(WEATHER_URL);
       if (!weatherRes.ok) {
