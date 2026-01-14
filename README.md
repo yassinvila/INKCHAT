@@ -2,20 +2,20 @@
 
 An ESP32-based e-ink display that shows real-time NYC MTA train arrivals and weather information.
 
-## 📋 Overview
+## Overview
 
 This project combines an ESP32 microcontroller with an e-ink display to create a low-power transit information screen. It displays:
 - **MTA Train Times**: Real-time northbound and southbound train arrivals
 - **Weather Data**: Temperature, precipitation, and weather conditions with icons
 - **Auto-refresh**: Updates periodically while maintaining the e-ink's paper-like appearance
 
-## 🛠️ Hardware Requirements
+## Hardware Requirements
 
 - **ESP32 Development Board** (esp32dev)
 - **GxEPD2-compatible E-ink Display** (Black & White)
 - USB cable for programming (COM3)
 - WiFi connection
-
+  
 ## 📁 Project Structure
 
 ```
@@ -39,7 +39,7 @@ This project combines an ESP32 microcontroller with an e-ink display to create a
 └── .gitignore                 # Git ignore rules
 ```
 
-## 🔧 Setup Instructions
+##  Setup Instructions
 
 ### 1. Clone the Repository
 
@@ -109,7 +109,7 @@ pio run --target upload
 - **Proxy URL**: `http://localhost:8787/weather`
 - **Data**: Hourly temperature, precipitation, weather codes for 72 hours
 
-## 🎨 Display Features
+##  Display Features
 
 ### Weather Icons
 The display shows contextual weather icons:
@@ -127,11 +127,11 @@ Icons automatically adjust based on weather codes and time of day.
 - **Arrival times**: Minutes until arrival
 - **Auto-update**: Refreshes on schedule
 
-## 🔌 Pin Configuration
+##  Pin Configuration
 
 The e-ink display connects to the ESP32 via SPI. Pin mappings are defined in `platformio.ini` and configured through the GxEPD2 library.
 
-## 📚 Dependencies
+##  Dependencies
 
 ### ESP32 (PlatformIO)
 - `GxEPD2` - E-ink display driver
@@ -145,7 +145,7 @@ The e-ink display connects to the ESP32 via SPI. Pin mappings are defined in `pl
 - `node-fetch` - HTTP client
 - `cors` - CORS middleware
 
-## 🔒 Security Notes
+##  Security Notes
 
 - **Never commit `.env` file** - WiFi credentials are kept local
 - The `.gitignore` excludes:
@@ -154,7 +154,7 @@ The e-ink display connects to the ESP32 via SPI. Pin mappings are defined in `pl
   - `.pio/` build files
   - `.vscode/` settings
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### ESP32 Won't Connect to WiFi
 - Check `.env` credentials are correct
@@ -170,7 +170,7 @@ The e-ink display connects to the ESP32 via SPI. Pin mappings are defined in `pl
 - Clean build: `pio run --target clean`
 - Update dependencies: `pio pkg update`
 
-## 📝 Development
+## Development
 
 ### Code Style
 - Main display logic: `E-INK/src/main.cpp`
@@ -188,7 +188,7 @@ Edit `proxy/server.js` to:
 - Modify data transformation
 - Update CORS settings
 
-## 📄 License
+##  License
 
 This project is open source. See individual library licenses for dependencies.
 
