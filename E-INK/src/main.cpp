@@ -1337,9 +1337,10 @@ void handleSave() {
     return;
   }
 
-  saveCreds(ssid, pass);
+  // TESTING: Disabled credential saving for now
+  // saveCreds(ssid, pass);
 
-  server.send(200, "text/plain", "WiFi credentials saved! Rebooting in 2 seconds...");
+  server.send(200, "text/plain", "WiFi credentials received (NOT saved - testing mode)!");
   delay(2000);
   ESP.restart();
 }
