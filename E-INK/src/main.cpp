@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <GxEPD2_BW.h>
 #include <WiFi.h>
+#include <WebServer.h>
+#include <Preferences.h>
 #include <time.h>
 
 #include <Fonts/FreeMonoBold9pt7b.h>
@@ -20,9 +22,18 @@ static const int EPD_RST  = 16;  // if boot issues: change to 16 and rewire
 static const int EPD_BUSY = 4;
 
 // ------------------------------- WiFi ----------------------------- //
-// HARDCODED WiFi credentials (platformio.ini .env mechanism not working)
-const char* SSID = "My 2G";
-const char* PASSWORD = "newyork@10";  // ← Replace with your password
+// Fallback hardcoded WiFi credentials (used if provisioning fails)
+const char* FALLBACK_SSID = "My 3G";
+const char* FALLBACK_PASSWORD = "newyork@10";
+
+// WiFi Provisioning AP settings
+static const char* AP_SSID = "ESP32-SETUP";
+static const char* AP_PASS = "12345678"; // Must be >= 8 chars
+static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
+
+WebServer server(80);
+Preferences prefs;
+bool apModeActive = false;
 
 // ------------------------------- LINKS ----------------------------- //
 static const char* TIMEZONE = "EST5EDT,M3.2.0/2,M11.1.0/2";
@@ -134,6 +145,14 @@ GxEPD2_BW<GxEPD2_750_GDEY075T7, GxEPD2_750_GDEY075T7::HEIGHT> display(
 // --------------------------- SETUP FUNCTION ----------------------- //
 void displayInit();
 bool wifiConnect();
+bool connectWiFiSTA(const char* ssid, const char* pass, uint32_t timeoutMs);
+void startAPMode();
+void saveCreds(const String& ssid, const String& pass);
+bool loadCreds(String& ssidOut, String& passOut);
+void clearCreds();
+void handleRoot();
+void handleSave();
+void handleClear();
 bool timeSync();
 String getTime();
 
@@ -166,6 +185,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("BOARD CONNECTED");
+  Serial.println("Type 'CLEAR_WIFI' in serial monitor to clear saved WiFi credentials for testing");
   pinMode(ENC_SW, INPUT_PULLUP);
   pinMode(ENC_CLK, INPUT_PULLUP);
   pinMode(ENC_DT, INPUT_PULLUP);
@@ -182,12 +202,71 @@ void setup() {
     timeSync();
   }
 
-  drawTimeScreen();
+  // Only draw time screen if not in AP mode (WiFi setup)
+  if (!apModeActive) {
+    drawTimeScreen();
+  }
 }
 
 // ------------------------------- LOOP ------------------------------ //
 void loop() {
   unsigned long now = millis();
+
+  // Handle serial commands (for testing/development)
+  if (Serial.available()) {
+    char ch = Serial.read();
+    Serial.print("[SERIAL] Received char: '");
+    Serial.print(ch);
+    Serial.print("' (0x");
+    Serial.print((int)ch, HEX);
+    Serial.println(")");
+
+    if (ch == 'W' || ch == 'w') {
+      Serial.println("[SERIAL] CLEAR_WIFI command recognized");
+      clearCreds();
+      Serial.println("WiFi credentials cleared. Rebooting...");
+      delay(1000);
+      ESP.restart();
+    }
+    else if (ch == 'D' || ch == 'd') {
+      Serial.println("[SERIAL] PIN_DEBUG command recognized");
+      Serial.println("Pin debug mode: Reading pins for 10 seconds (ROTATE ENCODER NOW)...");
+      int lastCLK = digitalRead(ENC_CLK);
+      int lastDT = digitalRead(ENC_DT);
+      for (int i = 0; i < 100; i++) {
+        int clk = digitalRead(ENC_CLK);
+        int dt = digitalRead(ENC_DT);
+        int sw = digitalRead(ENC_SW);
+        
+        if (clk != lastCLK || dt != lastDT || sw == LOW) {
+          Serial.print("[");
+          Serial.print(i * 100);
+          Serial.print("ms] SW=");
+          Serial.print(sw == LOW ? "LOW" : "HIGH");
+          Serial.print(" | CLK=");
+          Serial.print(clk == LOW ? "LOW" : "HIGH");
+          if (clk != lastCLK) Serial.print("*");
+          Serial.print(" | DT=");
+          Serial.print(dt == LOW ? "LOW" : "HIGH");
+          if (dt != lastDT) Serial.print("*");
+          Serial.println();
+          lastCLK = clk;
+          lastDT = dt;
+        }
+        delay(100);
+      }
+      Serial.println("Pin debug complete.");
+    }
+    else {
+      Serial.println("[SERIAL] Unknown command. Use 'W' to clear WiFi or 'D' for pin debug.");
+    }
+  }
+
+  // Handle web server in AP mode
+  if (apModeActive) {
+    server.handleClient();
+    return; // Don't run normal display logic in AP mode
+  }
 
   handleSerialEncoder();
 
@@ -288,7 +367,31 @@ void drawBootLogo() {
 
 // --------------------------- WIFI CONNECT -------------------------- //
 bool wifiConnect() {
+  String ssid, pass;
+  
+  // Try saved credentials once; otherwise go straight to AP setup
+  if (loadCreds(ssid, pass)) {
+    Serial.print("Found saved SSID: ");
+    Serial.println(ssid);
+    if (connectWiFiSTA(ssid.c_str(), pass.c_str(), WIFI_CONNECT_TIMEOUT_MS)) {
+      Serial.println("Connected with saved credentials");
+      return true;
+    }
+    Serial.println("Saved credentials failed. Going to AP setup...");
+  } else {
+    Serial.println("No saved credentials. Starting AP setup...");
+  }
+
+  startAPMode();
+  return false;
+}
+
+// Connect to WiFi in STA mode with timeout and display feedback
+bool connectWiFiSTA(const char* ssid, const char* pass, uint32_t timeoutMs) {
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.disconnect(true, true);
+  delay(200);
 
   display.setFullWindow();
   display.firstPage();
@@ -309,8 +412,8 @@ bool wifiConnect() {
 
   display.setPartialWindow(0, 200, 800, 120);
 
-  for (int attempt = 1; attempt <= 3; attempt++) {
-    WiFi.begin(SSID, PASSWORD);
+  for (int attempt = 1; attempt <= 2; attempt++) {
+    WiFi.begin(ssid, pass);
 
     unsigned long start = millis();
     while (!WiFi.isConnected() && millis() - start < 8000) {
@@ -334,7 +437,7 @@ bool wifiConnect() {
         display.setCursor(345, 245);
         display.print("Success");
       } else {
-        if (attempt < 3) {
+        if (attempt < 2) {
           display.setCursor(290, 245);
           display.print("Failed. Trying Again");
         } else {
@@ -816,7 +919,7 @@ void updateWeatherPartial() {
     } else if (weatherPage == 1) {
       display.setCursor(ICON_L_X + 50, labelY - 20);
       display.print("Today");
-      display.setCursor(ICON_M_X + 35, labelY);
+      display.setCursor(ICON_M_X + 45, labelY + 30);
       display.print("Tomorrow");
       display.setCursor(ICON_R_X + 10, labelY - 20);
       display.print("Following Day");
@@ -902,12 +1005,28 @@ static void handleSerialEncoder() {
   static unsigned long firstPressTime = 0;
   static int lastBtn = HIGH;
   static int pressCount = 0;
+  static unsigned long lastDebugPrintMs = 0;
   unsigned long now = millis();
 
   // BUTTON edge detection with double-press logic
   int btn = digitalRead(ENC_SW);
+  
+  // Debug: Print all encoder pin states every 500ms
+  if (now - lastDebugPrintMs >= 500) {
+    lastDebugPrintMs = now;
+    Serial.print("[DEBUG] ENC_SW(25)=");
+    Serial.print(btn == LOW ? "LOW" : "HIGH");
+    Serial.print(" | ENC_CLK(32)=");
+    Serial.print(digitalRead(ENC_CLK) == LOW ? "LOW" : "HIGH");
+    Serial.print(" | ENC_DT(33)=");
+    Serial.println(digitalRead(ENC_DT) == LOW ? "LOW" : "HIGH");
+  }
   if (btn == LOW && lastBtn == HIGH) {
-    if (now - lastBtnMs > 50) {  // Debounce
+    Serial.println("[BUTTON] *** EDGE DETECTED: HIGH -> LOW ***");
+    if (now - lastBtnMs > 300) {  // Debounce - increased to 300ms to filter encoder noise
+      Serial.print("[BUTTON] Debounce passed (");
+      Serial.print(now - lastBtnMs);
+      Serial.println("ms since last press)");
       lastBtnMs = now;
       
       // Check if this is within double-press window
@@ -915,17 +1034,39 @@ static void handleSerialEncoder() {
         // First press
         firstPressTime = now;
         pressCount = 1;
-        Serial.println("Button press 1");
+        Serial.println("[BUTTON] *** FIRST PRESS registered - waiting for second press ***");
       } else if (pressCount == 1 && (now - firstPressTime <= DOUBLE_PRESS_WINDOW_MS)) {
         // Second press within window = DOUBLE PRESS (go backwards)
         pressCount = 0;
+        Serial.print("[BUTTON] *** DOUBLE PRESS DETECTED *** (time between presses: ");
+        Serial.print(now - firstPressTime);
+        Serial.println("ms)");
         navState = (navState + 4) % 5;  // Go backwards (5-1=4)
-        Serial.print("DOUBLE PRESS: Previous screen (state=");
+        Serial.print("[BUTTON] Going to PREVIOUS screen (state=");
         Serial.print(navState);
         Serial.println(")");
         applyNavState();
         manualMode = true;
         lastSwitchMs = now;
+      } else if (pressCount == 1) {
+        // Late second press - execute delayed single press for first press, then start new sequence
+        Serial.print("[BUTTON] Second press too late (");
+        Serial.print(now - firstPressTime);
+        Serial.println("ms) - executing delayed single press for first press");
+        
+        // Execute the first press as single press
+        navState = (navState + 1) % 5;
+        Serial.print("[BUTTON] Going to NEXT screen (state=");
+        Serial.print(navState);
+        Serial.println(")");
+        applyNavState();
+        manualMode = true;
+        lastSwitchMs = now;
+        
+        // Now start new sequence for this press
+        firstPressTime = now;
+        pressCount = 1;
+        Serial.println("[BUTTON] *** Starting new FIRST PRESS sequence ***");
       }
     }
   }
@@ -935,12 +1076,375 @@ static void handleSerialEncoder() {
   if (pressCount == 1 && (now - firstPressTime > DOUBLE_PRESS_WINDOW_MS)) {
     // SINGLE PRESS (go forward)
     pressCount = 0;
+    Serial.print("[BUTTON] *** SINGLE PRESS CONFIRMED *** (timeout: ");
+    Serial.print(now - firstPressTime);
+    Serial.println("ms)");
     navState = (navState + 1) % 5;  // Go forward
-    Serial.print("SINGLE PRESS: Next screen (state=");
+    Serial.print("[BUTTON] Going to NEXT screen (state=");
     Serial.print(navState);
     Serial.println(")");
     applyNavState();
     manualMode = true;
     lastSwitchMs = now;
   }
+}
+
+// -------------------- WiFi Provisioning Functions -------------------- //
+
+// HTML page for WiFi setup
+static const char SETUP_PAGE[] PROGMEM = R"HTML(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <title>INK HAT WiFi Setup</title>
+  <style>
+    body { 
+      margin: 0;
+      min-height: 100vh;
+      background: #0b0f14;
+      overflow: hidden;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    
+    #binary {
+      transform: translate(-24px, -24px);
+      width: calc(100vw + 48px);
+      height: calc(100vh + 48px);
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      display: block;
+      opacity: 0.15;
+      pointer-events: none;
+      white-space: pre;
+      line-height: 1.05;
+      font-size: 12px;
+      color: #cfe3ff;
+    }
+    
+    #content {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #e7eef7;
+      z-index: 1;
+    }
+    
+    .box { 
+      max-width: 420px;
+      padding: 40px;
+      background: rgba(21, 25, 33, 0.95);
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(207, 227, 255, 0.1);
+    }
+    
+    h2 {
+      text-align: center;
+      color: #cfe3ff;
+      margin-top: 0;
+      margin-bottom: 30px;
+      font-size: 28px;
+      letter-spacing: 0.05em;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    }
+    
+    input { 
+      width: 100%; 
+      padding: 12px; 
+      margin: 12px 0; 
+      font-size: 16px;
+      background: #1a1f26;
+      color: #e7eef7;
+      border: 1px solid #3a4552;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-family: "Inter", sans-serif;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #cfe3ff;
+      box-shadow: 0 0 10px rgba(207, 227, 255, 0.2);
+    }
+    
+    label {
+      display: block;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      color: #9ab4d1;
+      font-size: 14px;
+      letter-spacing: 0.05em;
+    }
+    
+    button { 
+      width: 100%; 
+      padding: 14px; 
+      font-size: 16px;
+      background: #2d5a8a;
+      color: #e7eef7;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 24px;
+      letter-spacing: 0.08em;
+      font-family: "Inter", sans-serif;
+      transition: all 0.2s ease;
+    }
+    
+    button:hover {
+      background: #3a6fa5;
+      box-shadow: 0 0 15px rgba(58, 111, 165, 0.3);
+    }
+    
+    .info {
+      text-align: center;
+      font-size: 14px;
+      color: #7a8a9a;
+      margin-top: 24px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <pre id="binary"></pre>
+  
+  <div id="content">
+    <div class="box">
+      <h2>INK HAT SETUP</h2>
+      <form action="/save" method="post">
+        <label>WiFi SSID</label>
+        <input name="ssid" placeholder="Network name" required />
+        <label>Password</label>
+        <input name="pass" type="password" placeholder="WiFi password" />
+        <button type="submit"> SAVE </button>
+      </form>
+      
+      <div class="info">
+        Connect to this network and visit<br>
+        <strong>192.168.4.1</strong>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const binary = document.getElementById("binary");
+    let cols = 0, rows = 0;
+    let grid = [];
+    let timerId = null;
+
+    function measureChar() {
+      const probe = document.createElement("span");
+      const cs = getComputedStyle(binary);
+      probe.textContent = "0";
+      probe.style.position = "fixed";
+      probe.style.left = "-9999px";
+      probe.style.visibility = "hidden";
+      probe.style.fontFamily = cs.fontFamily;
+      probe.style.fontSize = cs.fontSize;
+      probe.style.lineHeight = cs.lineHeight;
+      probe.style.whiteSpace = "pre";
+      document.body.appendChild(probe);
+      const rect = probe.getBoundingClientRect();
+      probe.remove();
+      return { w: rect.width || 1, h: rect.height || 1 };
+    }
+
+    function randBit() {
+      return Math.random() < 0.5 ? "0" : "1";
+    }
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function buildGrid() {
+      const { w, h } = measureChar();
+      cols = Math.ceil(window.innerWidth / w) + 2;
+      rows = Math.ceil(window.innerHeight / h) + 2;
+      grid = new Array(rows);
+      for (let r = 0; r < rows; r++) {
+        let line = "";
+        for (let c = 0; c < cols; c++) line += randBit();
+        grid[r] = line;
+      }
+      render();
+    }
+
+    function render() {
+      let out = "";
+      for (let r = 0; r < rows; r++) {
+        out += grid[r] + "\n";
+      }
+      binary.textContent = out;
+    }
+
+    function shiftColumnsDown() {
+      if (!rows || !cols) return;
+      const mat = new Array(rows);
+      for (let r = 0; r < rows; r++) mat[r] = grid[r].split("");
+      for (let c = 0; c < cols; c++) {
+        const bottom = mat[rows - 1][c];
+        for (let r = rows - 1; r > 0; r--) {
+          mat[r][c] = mat[r - 1][c];
+        }
+        mat[0][c] = Math.random() < 0.65 ? randBit() : bottom;
+      }
+      for (let r = 0; r < rows; r++) grid[r] = mat[r].join("");
+      render();
+    }
+
+    function startRain() {
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(() => {
+        shiftColumnsDown();
+      }, 100);
+    }
+
+    window.addEventListener("resize", () => {
+      buildGrid();
+      startRain();
+    });
+
+    buildGrid();
+    startRain();
+  </script>
+</body>
+</html>
+)HTML";
+
+// Save WiFi credentials to NVS
+void saveCreds(const String& ssid, const String& pass) {
+  prefs.begin("wifi", false);
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", pass);
+  prefs.end();
+  Serial.println("[WIFI] Credentials saved to NVS");
+}
+
+// Load WiFi credentials from NVS
+bool loadCreds(String& ssidOut, String& passOut) {
+  prefs.begin("wifi", true);
+  ssidOut = prefs.getString("ssid", "");
+  passOut = prefs.getString("pass", "");
+  prefs.end();
+  return ssidOut.length() > 0;
+}
+
+// Clear saved WiFi credentials
+void clearCreds() {
+  prefs.begin("wifi", false);
+  prefs.remove("ssid");
+  prefs.remove("pass");
+  prefs.end();
+  Serial.println("[WIFI] Credentials cleared from NVS");
+}
+
+// Web server handler: root page
+void handleRoot() {
+  server.send(200, "text/html", SETUP_PAGE);
+}
+
+// Web server handler: save credentials
+void handleSave() {
+  String ssid = server.arg("ssid");
+  String pass = server.arg("pass");
+
+  ssid.trim();
+
+  if (ssid.length() == 0) {
+    server.send(400, "text/plain", "SSID is required.");
+    return;
+  }
+
+  saveCreds(ssid, pass);
+
+  server.send(200, "text/plain", "WiFi credentials saved! Rebooting in 2 seconds...");
+  delay(2000);
+  ESP.restart();
+}
+
+// Web server handler: clear credentials
+void handleClear() {
+  clearCreds();
+  server.send(200, "text/plain", "WiFi credentials cleared! Rebooting in 2 seconds...");
+  delay(2000);
+  ESP.restart();
+}
+
+// Start Access Point mode with web server
+void startAPMode() {
+  apModeActive = true;
+  WiFi.mode(WIFI_AP);
+
+  if (AP_PASS && strlen(AP_PASS) >= 8) {
+    WiFi.softAP(AP_SSID, AP_PASS);
+  } else {
+    WiFi.softAP(AP_SSID);
+  }
+
+  Serial.println("[AP] Access Point started");
+  Serial.print("[AP] SSID: ");
+  Serial.println(AP_SSID);
+  Serial.print("[AP] IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Display AP info on e-ink
+  display.setFullWindow();
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(FONT_BIG);
+
+    display.setCursor(250, 35);
+    display.print("WiFi Setup");
+    display.drawLine(10, 50, 790, 50, GxEPD_BLACK);      // Top
+    display.drawLine(10, 450, 790, 450, GxEPD_BLACK);    // Bottom
+    display.drawLine(10, 50, 10, 450, GxEPD_BLACK);      // Left
+    display.drawLine(790, 50, 790, 450, GxEPD_BLACK);    // Right
+
+
+    display.setFont(FONT_BIG);
+    display.setCursor(250, 100);
+    display.print("Connect to:");
+    display.setCursor(310, 140);
+    display.setFont(FONT_MED);
+    display.print(AP_SSID);
+
+    display.setFont(FONT_BIG);
+    display.setCursor(270, 220);
+    display.print("Password:");
+    display.setCursor(330, 260);
+    display.setFont(FONT_MED);
+    display.print(AP_PASS);
+
+    display.setFont(FONT_BIG);
+    display.setCursor(190, 340);
+    display.print("Visit in browser:");
+    display.setCursor(330, 380);
+    display.setFont(FONT_MED);
+    display.print("192.168.4.1");
+
+  } while (display.nextPage());
+
+  // Setup web server routes
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/save", HTTP_POST, handleSave);
+  server.on("/clear", HTTP_POST, handleClear);
+  server.onNotFound([]() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  });
+
+  server.begin();
+  Serial.println("[AP] Web server started at http://192.168.4.1");
 }
