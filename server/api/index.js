@@ -1,5 +1,4 @@
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import { Analytics } from "@vercel/analytics/next"
 
 const northA = "A28N";
 const southA = "A28S";

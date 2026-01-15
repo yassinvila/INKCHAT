@@ -28,7 +28,7 @@ const char* FALLBACK_PASSWORD = "newyork@10";
 
 // WiFi Provisioning AP settings
 static const char* AP_SSID = "ESP32-SETUP";
-static const char* AP_PASS = "12345678"; // Must be >= 8 chars
+static const char* AP_PASS = "pitchfest"; // Must be >= 8 chars
 static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 
 WebServer server(80);
@@ -324,15 +324,9 @@ void displayInit() {
 // --------------------------- BOOT LOGO ANIMATION ------------------- //
 void drawBootLogo() {
   display.setFullWindow();
-  display.firstPage();
-  do {
-    display.fillScreen(GxEPD_WHITE);
-  } while (display.nextPage());
-  
   display.setFont(FONT_BIG);
   display.setTextColor(GxEPD_BLACK);
   
-  display.setFullWindow();
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
