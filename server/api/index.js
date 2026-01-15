@@ -16,6 +16,8 @@ const LON = -73.9935;
 const WEATHER_URL =
   "https://api.open-meteo.com/v1/forecast?latitude=40.7506&longitude=-73.9935&daily=temperature_2m_max,temperature_2m_min,weather_code&hourly=temperature_2m,precipitation,visibility,is_day,weather_code&current=temperature_2m,precipitation,weather_code,rain,showers,snowfall,is_day&timezone=America%2FNew_York&forecast_days=3&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch";
 
+const analytics = new Analytics();
+
 export default async function handler(req, res) {
   console.log("HIT", req.method, req.url);
 
@@ -36,6 +38,7 @@ export default async function handler(req, res) {
   if (route === "health") {
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
+    analytics.track("health_check");
     return res.end(JSON.stringify({ ok: true }));
   }
 
@@ -44,6 +47,7 @@ export default async function handler(req, res) {
       const mtaRes = await fetch(MTA_URL_N);
 
       if (!mtaRes.ok) {
+        analytics.track("mta_fetch_failed", { status: mtaRes.status });
         res.statusCode = 502;
         res.setHeader("Content-Type", "application/json");
         return res.end(
@@ -90,6 +94,11 @@ export default async function handler(req, res) {
       northbound.sort((a, b) => a.minutes - b.minutes);
       southbound.sort((a, b) => a.minutes - b.minutes);
 
+      analytics.track("mta_fetch_success", { 
+        northbound_count: northbound.length,
+        southbound_count: southbound.length
+      });
+
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       return res.end(
@@ -99,6 +108,7 @@ export default async function handler(req, res) {
         })
       );
     } catch (ERR) {
+      analytics.track("mta_fetch_error", { error: String(ERR) });
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
       return res.end(
@@ -112,6 +122,7 @@ export default async function handler(req, res) {
       const weatherRes = await fetch(WEATHER_URL);
 
       if (!weatherRes.ok) {
+        analytics.track("weather_fetch_failed", { status: weatherRes.status });
         res.statusCode = 502;
         res.setHeader("Content-Type", "application/json");
         return res.end(
@@ -127,6 +138,10 @@ export default async function handler(req, res) {
 
       let safeStart = startIndex;
       if (safeStart < 0) safeStart = 0;
+
+      analytics.track("weather_fetch_success", { 
+        hourly_count: data.hourly.temperature_2m.slice(safeStart).length 
+      });
 
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
@@ -152,6 +167,7 @@ export default async function handler(req, res) {
         })
       );
     } catch (ERR) {
+      analytics.track("weather_fetch_error", { error: String(ERR) });
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
       return res.end(
