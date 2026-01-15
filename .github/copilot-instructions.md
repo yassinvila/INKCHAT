@@ -7,9 +7,9 @@
 ### Architecture: Two-Tier System
 
 1. **ESP32 Firmware (C++/Arduino)** - [E-INK/](E-INK/): Display driver, WiFi client, screen rendering
-2. **Node.js Proxy Server (JavaScript)** - [proxy/](proxy/): API gateway that handles CORS, rate-limiting, and protocol translation (GTFS Realtime → JSON)
+2. **Node.js Proxy Server (JavaScript)** - [local_server/](local_server/) (development) or [server/](server/) (production): API gateway that handles CORS, rate-limiting, and protocol translation (GTFS Realtime → JSON)
 
-**Critical Data Flow**: ESP32 → WiFi → Proxy Server (localhost:8787) → MTA GTFS Realtime + Open-Meteo Weather API
+**Critical Data Flow**: ESP32 → WiFi → Vercel Serverless API (https://inkchat-ruby.vercel.app/api/) → MTA GTFS Realtime + Open-Meteo Weather API
 
 ## Key Components & Patterns
 
@@ -52,7 +52,7 @@ Hard-coded visual coordinates:
 ### Prerequisites
 - PlatformIO CLI installed (or VS Code extension)
 - ESP32 connected to COM3 (see [platformio.ini](E-INK/platformio.ini))
-- `.env` file in [E-INK/](E-INK/) with `WIFI_SSID` and `WIFI_PASSWORD`
+- WiFi credentials hardcoded in [main.cpp](E-INK/src/main.cpp#L24-L26) (platformio.ini .env mechanism not working)
 
 ### Build & Flash
 ```bash
@@ -62,15 +62,21 @@ pio run --target upload --monitor-port COM3
 
 Alternatively: Open folder in VS Code with PlatformIO extension, click "Upload" button.
 
-### Start Proxy Server (Required)
+### Start Proxy Server (Development Only)
+For local development testing:
 ```bash
-cd proxy
+cd local_server
 npm install  # if first time
 node server.js
 ```
 Server listens on `http://0.0.0.0:8787` (accessible from local network).
 
-### Configuration
+**Note**: Production firmware uses Vercel deployment at `https://inkchat-ruby.vercel.app/api/`
+
+### Configurationlocal_server/server.js](local_server/server.js#L12) and [server/api/index.js](server/api/index.js#L12): 40.7506, -73.9935 (Midtown NYC)
+- **Production URLs**: 
+  - MTA: `https://inkchat-ruby.vercel.app/api/mta`
+  - Weather: `https://inkchat-ruby.vercel.app/api/weather`
 - **MTA Proxy**: Decodes GTFS Realtime protobuf using `gtfs-realtime-bindings` npm package
 - **Weather Provider**: Open-Meteo (free, no key required)
 - **Target Coordinates**: Hardcoded in [proxy/server.js](proxy/server.js#L12): 40.7506, -73.9935 (Midtown NYC)
@@ -81,15 +87,18 @@ Server listens on `http://0.0.0.0:8787` (accessible from local network).
 - **Partial updates**: Only refresh changed regions (e.g., `updateMtaDotsPartial()`) to reduce flicker and power consumption
 - **Full refresh**: Called at screen transitions; triggered by `drawTimeScreen()`, `drawMTAScreen()`, `drawWeatherScreen()`
 - **No double-buffering**: E-ink driver handles framebuffer internally
-
+Button on pin 25 (ENC_SW)
+  - **Single press** (within 500ms): Next screen
+  - **Double press** (2 presses within 500ms): Previous screen
 ### Serial Communication
 - **Debug output**: 115200 baud
 - **Manual screen control**: Reserved for future encoder-based UI (pins 27, 32, 33 reserved)
 - **No REPL**: No interactive serial shell; prints are one-way logging only
 
 ### Clock & Timezone
-- Syncs from NTP on WiFi connect using POSIX `setenv("TZ", "EST5EDT,M3.2.0/2,M11.1.0/2", 1)`
-- Time zone is hardcoded as Eastern Time in [main.cpp](E-INK/src/main.cpp#L34)
+- **Weather uses DynamicJsonDocument<30000>**: Temporary heap allocation for large weather response
+- Fallback values with `|` operator: `north[i]["minutes"] | -1` defaults to -1 if key missing
+- **Heap Fragmentation Risk**: DynamicJsonDocument allocates on heap; repeated alloc/free cycles can fragment RAM into non-contiguous chunks, potentially causing allocation failures on ESP32's limited memory even when total free RAM exists
 
 ### JSON Parsing
 - Uses **ArduinoJson v7** with `StaticJsonDocument<4096>` (MTA response)
@@ -106,6 +115,7 @@ Server listens on `http://0.0.0.0:8787` (accessible from local network).
 5. Add proxy endpoint in [proxy/server.js](proxy/server.js) if external API required
 
 ### Troubleshooting Serial Issues
+- WiFi not connecting: Edit hardcoded credentials in [main.cpp](E-INK/src/main.cpp#L24-L26) (platformio.ini .env mechanism not functional)
 - If upload fails: Try `pio run --target erase` then re-upload
 - Monitor port mismatch: Update `upload_port` in [platformio.ini](E-INK/platformio.ini)
 - Garbage output at 115200 baud: Check USB cable and board selection (`esp32dev`)
@@ -123,7 +133,8 @@ The [testsample.md](E-INK/src/testsample.md) file documents an experimental WiFi
 | File | Purpose |
 |------|---------|
 | [E-INK/src/main.cpp](E-INK/src/main.cpp) | Display loop, screen logic, global state, rendering |
-| [E-INK/src/api.cpp](E-INK/src/api.cpp) | HTTP fetch functions, JSON parsing |
+| [local_server/server.js](local_server/server.js) | Express routes for local development (port 8787) |
+| [server/api/index.js](server/api/index.js) | Vercel serverless function for produc |
 | [E-INK/src/icon.cpp](E-INK/src/icon.cpp) | Weather code → bitmap mapping |
 | [E-INK/include/api.h](E-INK/include/api.h) | API function declarations, extern storage |
 | [E-INK/include/icon.h](E-INK/include/icon.h) | Weather bitmap declarations |

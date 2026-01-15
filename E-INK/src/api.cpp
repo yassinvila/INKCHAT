@@ -4,6 +4,10 @@
 #include <ArduinoJson.h>
 #include "api.h"
 
+// Static JSON documents (allocated once at startup, reused forever)
+// Eliminates heap fragmentation from repeated malloc/free cycles
+static StaticJsonDocument<30000> weatherDoc;
+
 // -------------------- MTA --------------------
 bool mtaFetch() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -83,11 +87,10 @@ bool weatherFetch() {
   String payload = http.getString();
   http.end();
 
-  // Your proxy returns an "hourly" array of objects.
-  // This needs more than 4096.
-  DynamicJsonDocument doc(30000);
+  // Clear previous data and reuse static document (no heap fragmentation)
+  weatherDoc.clear();
 
-  DeserializationError err = deserializeJson(doc, payload);
+  DeserializationError err = deserializeJson(weatherDoc, payload);
   if (err) {
     Serial.print("Weather JSON parse error: ");
     Serial.println(err.c_str());
@@ -95,9 +98,9 @@ bool weatherFetch() {
   }
 
   // startIndex
-  weatherStartIndex = doc["startIndex"] | 0;
+  weatherStartIndex = weatherDoc["startIndex"] | 0;
 
-  JsonArray hourly = doc["hourly"].as<JsonArray>();
+  JsonArray hourly = weatherDoc["hourly"].as<JsonArray>();
   int n = (int)hourly.size();
   if (n > WEATHER_MAX) n = WEATHER_MAX;
   weatherCount = n;

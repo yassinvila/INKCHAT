@@ -20,14 +20,14 @@ static const int EPD_RST  = 16;  // if boot issues: change to 16 and rewire
 static const int EPD_BUSY = 4;
 
 // ------------------------------- WiFi ----------------------------- //
-// HARDCODED WiFi credentials
+// HARDCODED WiFi credentials (platformio.ini .env mechanism not working)
 const char* SSID = "My 2G";
 const char* PASSWORD = "newyork@10";  // ← Replace with your password
 
 // ------------------------------- LINKS ----------------------------- //
 static const char* TIMEZONE = "EST5EDT,M3.2.0/2,M11.1.0/2";
-const char* MTA_URL = "https://inkchat-ruby.vercel.app/mta";
-const char* WEATHER_URL = "https://inkchat-ruby.vercel.app/weather";
+const char* MTA_URL = "https://inkchat-ruby.vercel.app/api/mta";
+const char* WEATHER_URL = "https://inkchat-ruby.vercel.app/api/weather";
 
 // ------------------------------- FONT ----------------------------- //
 static const GFXfont* FONT = &FreeMonoBold9pt7b;
@@ -69,8 +69,8 @@ static const int SCREEN_H = 480;
 
 static const int HALF_H   = 240;
 
-// Manual screen control via serial "encoder"
-static bool manualMode = true;          // disable auto-rotation when true
+// Manual screen control via button
+static bool manualMode = false;          // disable auto-rotation when true
 
 // Icon boxes (for MTA screen)
 static const int ICON_W   = 160;
@@ -124,8 +124,8 @@ static const int ICON_TEXT_Y0 = 255;
 static const int ROWS_X = 240;
 static const int ROWS_Y = 280;
 
-// Invert rotary direction if wiring is flipped
-static const bool ROTARY_INVERT = true;
+// Button press navigation: 1 press = next screen, 2 presses = previous screen
+static const unsigned long DOUBLE_PRESS_WINDOW_MS = 500;  // 500ms window for double press
 // ---------------- 7.5" 800x480 Good Display (UC8179) -------------- //
 GxEPD2_BW<GxEPD2_750_GDEY075T7, GxEPD2_750_GDEY075T7::HEIGHT> display(
   GxEPD2_750_GDEY075T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)
@@ -137,7 +137,8 @@ bool wifiConnect();
 bool timeSync();
 String getTime();
 
-// ------------------------- SCREEN FUNCTIONS ---------------------- //
+// --------------------------- SCREEN FUNCTIONS ---------------------- //
+void drawBootLogo();
 void drawTimeScreen();
 void updateTimePartialEveryMinute();
 
@@ -175,6 +176,8 @@ void setup() {
   }
   
   displayInit();
+  drawBootLogo();
+  
   if (wifiConnect()) {
     timeSync();
   }
@@ -237,6 +240,50 @@ void displayInit() {
   display.setRotation(0);
   display.setFullWindow();
   Serial.println("Display Good");
+}
+
+// --------------------------- BOOT LOGO ANIMATION ------------------- //
+void drawBootLogo() {
+  const char* logoLines[6] = {
+    "    \xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97   \xE2\x96\x88\xE2\x96\x88\xE2\x95\x97\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97 \xE2\x96\x88\xE2\x96\x88\xE2\x95\x97                \xE2\x96\x88\xE2\x96\x88\xE2\x95\x97  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x97 \xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97 \xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97",
+    "    \xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x95\x9D  \xE2\x95\x94\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x97  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x95\x90\xE2\x95\x90\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97\xE2\x95\x9A\xE2\x95\x90\xE2\x95\x90\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x95\x90\xE2\x95\x90\xE2\x95\x9D",
+    "    \xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97 \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94   \xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91  \xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91   \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91",
+    "    \xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x95\x9A\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x96\x88\xE2\x96\x88\xE2\x95\x97   \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x9D  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x95\x90\xE2\x95\x90\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x94\xE2\x95\x90\xE2\x95\x90\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91   \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91",
+    "    \xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91 \xE2\x95\x9A\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91 \xE2\x96\x88\xE2\x96\x88\xE2\x95\x97                \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91\xE2\x96\x88\xE2\x96\x88\xE2\x95\x91  \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91   \xE2\x96\x88\xE2\x96\x88\xE2\x95\x91",
+    "    \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D\xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D  \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x90\xE2\x95\x90\xE2\x95\x9D\xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D  \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D                \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D  \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D\xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D  \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D   \xE2\x95\x9A\xE2\x95\x90\xE2\x95\x9D"
+  };
+  
+  
+  display.setFullWindow();
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+  } while (display.nextPage());
+  
+  display.setFont(FONT);
+  display.setTextColor(GxEPD_BLACK);
+  
+  int startY = 200;
+  int lineHeight = 18;
+  
+  for (int i = 0; i < 6; i++) {
+    display.setPartialWindow(0, startY + (i * lineHeight) - 10, 800, lineHeight + 20);
+    
+    display.firstPage();
+    do {
+      display.fillScreen(GxEPD_WHITE);
+      
+      // Draw all lines up to and including current line
+      for (int j = 0; j <= i; j++) {
+        display.setCursor(40, startY + (j * lineHeight));
+        display.print(logoLines[j]);
+      }
+    } while (display.nextPage());
+    
+    delay(250);  // 250ms between lines
+  }
+  
+  delay(800);  // Hold final frame
 }
 
 // --------------------------- WIFI CONNECT -------------------------- //
@@ -825,83 +872,75 @@ static void goToScreen(Screen s) {
   }
 }
 
-// Rotary encoder state machine (robust method)
-static int8_t read_rotary() {
-  static int8_t rot_enc_table[] = {0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0};
-  static uint8_t prevNextCode = 0;
-  static uint16_t store = 0;
-
-  prevNextCode <<= 2;
-  if (digitalRead(ENC_DT)) prevNextCode |= 0x02;  // DATA
-  if (digitalRead(ENC_CLK)) prevNextCode |= 0x01; // CLK
-  prevNextCode &= 0x0f;
-
-  // If valid then store as 16 bit data
-  if (rot_enc_table[prevNextCode]) {
-    store <<= 4;
-    store |= prevNextCode;
-    
-    // Debug: show pattern
-    Serial.print("Pattern: 0x");
-    Serial.println(store & 0xff, HEX);
-    
-    uint8_t code = store & 0xff;
-    if (code == 0x2b) {
-      Serial.println(">>> Detected 0x2b");
-      store = 0; // reset so we don't double-fire on overlap
-      return ROTARY_INVERT ? 1 : -1; // treat as CCW unless inverted
-    }
-
-    // CW patterns observed on this hardware (including bouncy variants)
-    if (code == 0x17 || code == 0xd4 || code == 0xe8 ||
-      code == 0xeb || code == 0xbe || code == 0xbd ||
-      code == 0xd7 || code == 0x7e || code == 0xe7 ||
-      code == 0x0e || code == 0x0b) {
-      Serial.print(">>> Detected CW pattern 0x");
-      Serial.println(code, HEX);
-      store = 0; // reset to avoid emitting two signals per detent
-      return ROTARY_INVERT ? -1 : 1;  // flip if wiring inverted
-    }
+// Button press detection: single press = next, double press = previous
+static void detectButtonPress(bool &singlePress, bool &doublePress) {
+  static unsigned long lastPressTime = 0;
+  static unsigned long pressCount = 0;
+  static unsigned long lastCheckTime = 0;
+  unsigned long now = millis();
+  
+  singlePress = false;
+  doublePress = false;
+  
+  // Check if we have a pending single press that timed out
+  if (pressCount == 1 && (now - lastPressTime > DOUBLE_PRESS_WINDOW_MS)) {
+    singlePress = true;
+    pressCount = 0;
+    Serial.println(">>> SINGLE PRESS detected");
   }
-  return 0;
+  
+  // Check for second press to make it a double
+  if (pressCount == 2) {
+    doublePress = true;
+    pressCount = 0;
+    Serial.println(">>> DOUBLE PRESS detected");
+  }
 }
 
 static void handleSerialEncoder() {
   static unsigned long lastBtnMs = 0;
+  static unsigned long firstPressTime = 0;
   static int lastBtn = HIGH;
+  static int pressCount = 0;
   unsigned long now = millis();
 
-  // ROTATION: use robust state machine
-  int8_t rotaryVal = read_rotary();
-  if (rotaryVal != 0) {
-    if (rotaryVal < 0) {
-      // LEFT
-      navState = (navState + 4) % 5;
-      Serial.print("ENC ROTATE: LEFT (state=");
-      Serial.print(navState);
-      Serial.println(")");
-    } else {
-      // RIGHT
-      navState = (navState + 1) % 5;
-      Serial.print("ENC ROTATE: RIGHT (state=");
-      Serial.print(navState);
-      Serial.println(")");
+  // BUTTON edge detection with double-press logic
+  int btn = digitalRead(ENC_SW);
+  if (btn == LOW && lastBtn == HIGH) {
+    if (now - lastBtnMs > 50) {  // Debounce
+      lastBtnMs = now;
+      
+      // Check if this is within double-press window
+      if (pressCount == 0) {
+        // First press
+        firstPressTime = now;
+        pressCount = 1;
+        Serial.println("Button press 1");
+      } else if (pressCount == 1 && (now - firstPressTime <= DOUBLE_PRESS_WINDOW_MS)) {
+        // Second press within window = DOUBLE PRESS (go backwards)
+        pressCount = 0;
+        navState = (navState + 4) % 5;  // Go backwards (5-1=4)
+        Serial.print("DOUBLE PRESS: Previous screen (state=");
+        Serial.print(navState);
+        Serial.println(")");
+        applyNavState();
+        manualMode = true;
+        lastSwitchMs = now;
+      }
     }
+  }
+  lastBtn = btn;
+  
+  // Check if single press window expired
+  if (pressCount == 1 && (now - firstPressTime > DOUBLE_PRESS_WINDOW_MS)) {
+    // SINGLE PRESS (go forward)
+    pressCount = 0;
+    navState = (navState + 1) % 5;  // Go forward
+    Serial.print("SINGLE PRESS: Next screen (state=");
+    Serial.print(navState);
+    Serial.println(")");
     applyNavState();
     manualMode = true;
     lastSwitchMs = now;
   }
-
-  // BUTTON edge detection
-  int btn = digitalRead(ENC_SW);
-  if (btn == LOW && lastBtn == HIGH) {
-    if (now - lastBtnMs > 50) {
-      Serial.println("ENC BUTTON: PRESS");
-      applyNavState();
-      manualMode = true;
-      lastSwitchMs = now;
-      lastBtnMs = now;
-    }
-  }
-  lastBtn = btn;
 }

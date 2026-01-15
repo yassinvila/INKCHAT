@@ -1,306 +1,339 @@
 <!DOCTYPE html>
 <html>    
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
-        <title>InkChat API</title>
-        <style>
-            body {
-                margin: 0;
-                min-height: 100vh;
-                background: #0b0f14; /* your base background */
-                overflow: hidden;
-                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <title>InkChat API</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0b0f14; /* your base background */
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+      }
 
-            /* ASCII background layer */
-            #binary {
-                transform: translate(-24px, -24px);
-                width: calc(100vw + 48px);
-                height: calc(100vh + 48px);            
-                position: fixed;
-                inset: 0;
-                z-index: 0;
-                display: block;
-                opacity: 0.28;
-                pointer-events: none;
-                white-space: pre;
-                line-height: 1.05;
-                font-size: 12px;
-                color: #cfe3ff;
-                /* “hole around cursor” 
-            -webkit-mask-image: radial-gradient(
-                circle 120px at var(--x, 50%) var(--y, 50%),
-                transparent 0 20px,
-                rgba(0,0,0,0.85) 20px,
-                black 140px);
-            mask-image: radial-gradient(
-                circle 120px at var(--x, 50%) var(--y, 50%),
-                transparent 0 20px,
-                rgba(0,0,0,1) 20px,
-                black 140px);
-            */
-            }
-            
-            #links {
-                display: flex;
-                gap: 22px;
-                justify-content: center;
-            }
+      /* ASCII background layer */
+      #binary {
+        transform: translate(-24px, -24px);
+        width: calc(100vw + 48px);
+        height: calc(100vh + 48px);
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        display: block;
+        opacity: 0.28;
+        pointer-events: none;
+        white-space: pre;
+        line-height: 1.05;
+        font-size: 12px;
+        color: #cfe3ff;
+        /* “hole around cursor” 
+        -webkit-mask-image: radial-gradient(
+          circle 120px at var(--x, 50%) var(--y, 50%),
+          transparent 0 20px,
+          rgba(0,0,0,0.85) 20px,
+          black 140px);
+        mask-image: radial-gradient(
+          circle 120px at var(--x, 50%) var(--y, 50%),
+          transparent 0 20px,
+          rgba(0,0,0,1) 20px,
+          black 140px);
+        */
+      }
 
-            #links a {
-  font-family: "Inter", sans-serif;
+      #links {
+        display: flex;
+        gap: 22px;
+        justify-content: center;
+      }
 
-                color: #f2f6ff;
-                text-decoration: none;
-                letter-spacing: 0.12em;
-                font-size: 24px;
-                opacity: 0.9;
-                text-shadow: 0 0 10px rgba(255, 255, 255, 0.12),
-                0 0 2px rgba(0, 0, 0, 0.7);
-            }
+      #links a {
+        font-family: "Inter", sans-serif;
+        color: #f2f6ff;
+        text-decoration: none;
+        letter-spacing: 0.12em;
+        font-size: 24px;
+        opacity: 0.9;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.12),
+          0 0 2px rgba(0, 0, 0, 0.7);
+      }
 
-            /* LOGO */
-            #content {
-                position: relative;
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;   /* ADD THIS */
+      /* LOGO */
+      #content {
+        position: relative;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #e7eef7;
+        gap: 8px;
+        z-index: 1;
+      }
 
-                align-items: center;
-                justify-content: center;
-                color: #e7eef7;
-                gap: 8px;
-                z-index: 1;
-            }
-            
-            #content pre {
-                margin: 0;
-                white-space: pre;
-                line-height: 1.1;
-                color: #f2f6ff;
-                text-shadow: 0 0 14px rgba(255, 255, 255, 0.18),
-                             0 0 2px rgba(0, 0, 0, 0.7);
-            }
+      #content pre {
+        margin: 0;
+        white-space: pre;
+        line-height: 1.1;
+        color: #f2f6ff;
+        text-shadow: 0 0 14px rgba(255, 255, 255, 0.18),
+          0 0 2px rgba(0, 0, 0, 0.7);
+      }
+
+      /* Logo line-by-line animation */
+      #logo {
+        display: block;
+      }
+
+      #logo .line {
+        display: block;
+        opacity: 0;
+        transform: translateX(-20px);
+        animation: lineAppear 0.3s ease-out forwards;
+      }
+
+      #logo .line:nth-child(1) { animation-delay: 0.1s; }
+      #logo .line:nth-child(2) { animation-delay: 0.3s; }
+      #logo .line:nth-child(3) { animation-delay: 0.5s; }
+      #logo .line:nth-child(4) { animation-delay: 0.7s; }
+      #logo .line:nth-child(5) { animation-delay: 0.9s; }
+      #logo .line:nth-child(6) { animation-delay: 1.1s; }
+
+      @keyframes lineAppear {
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      #links {
+        opacity: 0;
+        animation: fadeIn 0.5s ease-out 1.5s forwards;
+      }
+
+      @keyframes fadeIn {
+        to {
+          opacity: 1;
+        }
+      }
     </style>
-    </head>
+  </head>
 
-    <body>
-        <pre id="binary"></pre>
+  <body>
+    <pre id="binary"></pre>
 
-        <div id="content">
-            <pre>
-    ║██║███╗   ██╗██╗ ██╗                ██╗  ██╗ █████╗ ████████╗
-    ║██║████╗  ██║██║██╔╝  ╔══════════╗  ██║  ██║██╔══██╗╚══██╔══╝
-    ║██║██╔██╗ ██║█████╔   ║██████████║  ███████║███████║   ██║
-    ║██║██║╚██╗██║██╔██╗   ╚══════════╝  ██╔══██║██╔══██║   ██║
-    ║██║██║ ╚████║██║ ██╗                ██║  ██║██║  ██║   ██║
-    ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝                ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
-            </pre>
-            
-            <div id="links">
-                <a href="api/health">HEALTH    </a>
-                <a href="api/mta">MTA</a>
-                <a href="api/weather">    WEATHER</a>
-            </div>
+    <div id="content">
+      <pre id="logo"><span class="line">    ║██║███╗   ██╗██╗ ██╗                ██╗  ██╗ █████╗ ████████╗</span><span class="line">    ║██║████╗  ██║██║██╔╝  ╔══════════╗  ██║  ██║██╔══██╗╚══██╔══╝</span><span class="line">    ║██║██╔██╗ ██║█████╔   ║██████████║  ███████║███████║   ██║</span><span class="line">    ║██║██║╚██╗██║██╔██╗   ╚══════════╝  ██╔══██║██╔══██║   ██║</span><span class="line">    ║██║██║ ╚████║██║ ██╗                ██║  ██║██║  ██║   ██║</span><span class="line">    ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝                ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝</span></pre>
 
-        </div>
-        
-        <script>
-            const binary = document.getElementById("binary");
+      <div id="links">
+        <a href="api/health">HEALTH</a>
+        <a href="api/mta">MTA</a>
+        <a href="api/weather">WEATHER</a>
+      </div>
+    </div>
 
-            // Grid + cursor state
-            let cols = 0,rows = 0;
-            let grid = []; // array of strings
-            let cursorCol = -9999, cursorRow = -9999;
-            let rafPending = false;
+    <script>
+      const binary = document.getElementById("binary");
 
-            // EXACTLY 4 characters total -> 2x2 block
-            const BOX_COLS = 2;
-            const BOX_ROWS = 2;
+      // Grid + cursor state
+      let cols = 0, rows = 0;
+      let grid = []; // array of strings
+      let cursorCol = -9999, cursorRow = -9999;
+      let rafPending = false;
 
-            // Shift the erase block slightly right/down from the actual pointer
-            const OFFSET_X_PX = 3;
-            const OFFSET_Y_PX = 2;
+      // EXACTLY 4 characters total -> 2x2 block
+      const BOX_COLS = 0;
+      const BOX_ROWS = 0;
 
-            // Must match CSS overscan (translate -24px, -24px and +48px size)
-            const OVERSCAN_PX = 48;
+      // Shift the erase block slightly right/down from the actual pointer
+      const OFFSET_X_PX = 0;
+      const OFFSET_Y_PX = 1;
 
-            function measureChar() {
-                const probe = document.createElement("span");
-                const cs = getComputedStyle(binary);
+      // Must match CSS overscan (translate -24px, -24px and +48px size)
+      const OVERSCAN_PX = 48;
 
-                probe.textContent = "0";
-                probe.style.position = "fixed";
-                probe.style.left = "-9999px";
-                probe.style.top = "-9999px";
-                probe.style.visibility = "hidden";
-                probe.style.fontFamily = cs.fontFamily;
-                probe.style.fontSize = cs.fontSize;
-                probe.style.lineHeight = cs.lineHeight;
-                probe.style.whiteSpace = "pre";
+      // "Rain" state: per-column speed + accumulator for uneven falling
+      let colSpeed = [];   // each column: how often it advances (frames)
+      let colAcc = [];     // each column: accumulator
+      let timerId = null;
+      let tickMs = 75;     // base tick (overall smoothness)
 
-                document.body.appendChild(probe);
-                const rect = probe.getBoundingClientRect();
-                probe.remove();
+      function measureChar() {
+        const probe = document.createElement("span");
+        const cs = getComputedStyle(binary);
 
-                return { w: rect.width || 1, h: rect.height || 1 };
-            }
+        probe.textContent = "0";
+        probe.style.position = "fixed";
+        probe.style.left = "-9999px";
+        probe.style.top = "-9999px";
+        probe.style.visibility = "hidden";
+        probe.style.fontFamily = cs.fontFamily;
+        probe.style.fontSize = cs.fontSize;
+        probe.style.lineHeight = cs.lineHeight;
+        probe.style.whiteSpace = "pre";
 
-            function randBit() {
-                return Math.random() < 0.5 ? "0" : "1";
-            }
+        document.body.appendChild(probe);
+        const rect = probe.getBoundingClientRect();
+        probe.remove();
 
-            function buildGrid() {
-                const { w, h } = measureChar();
+        return { w: rect.width || 1, h: rect.height || 1 };
+      }
 
-                cols = Math.ceil((window.innerWidth + OVERSCAN_PX) / w) + 2;
-                rows = Math.ceil((window.innerHeight + OVERSCAN_PX) / h) + 2;
+      function randBit() {
+        return Math.random() < 0.5 ? "0" : "1";
+      }
 
-                grid = new Array(rows);
-                for (let r = 0; r < rows; r++) {
-                let line = "";
-                for (let c = 0; c < cols; c++) line += randBit();
-                grid[r] = line;
-                }
+      function randInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
 
-                render();
-            }
+      function initRain() {
+        colSpeed = new Array(cols);
+        colAcc = new Array(cols);
 
-            function render() {
-                const cStart = cursorCol;
-                const rStart = cursorRow;
+        for (let c = 0; c < cols; c++) {
+          // lower = faster, higher = slower
+          // These are "advance every N ticks"
+          colSpeed[c] = randInt(1, 6);
+          colAcc[c] = 0;
+        }
+      }
 
-                let out = "";
+      function buildGrid() {
+        const { w, h } = measureChar();
 
-                for (let r = 0; r < rows; r++) {
-                // fast path: rows outside the 2-row erase block
-                if (r < rStart || r >= rStart + BOX_ROWS) {
-                    out += grid[r] + "\n";
-                    continue;
-                }
+        cols = Math.ceil((window.innerWidth + OVERSCAN_PX) / w) + 2;
+        rows = Math.ceil((window.innerHeight + OVERSCAN_PX) / h) + 2;
 
-                const base = grid[r];
-                let rowArr = base.split("");
+        grid = new Array(rows);
+        for (let r = 0; r < rows; r++) {
+          let line = "";
+          for (let c = 0; c < cols; c++) line += randBit();
+          grid[r] = line;
+        }
 
-                // erase 2 columns in this row (2x2 total across 2 rows)
-                for (let c = cStart; c < cStart + BOX_COLS; c++) {
-                    if (c >= 0 && c < cols) rowArr[c] = " ";
-                }
+        initRain();
+        render();
+      }
 
-                out += rowArr.join("") + "\n";
-                }
+      
+      function render() {
+        const cStart = cursorCol;
+        const rStart = cursorRow;
 
-                binary.textContent = out;
-            }
+        let out = "";
 
-            function scheduleRender() {
-                if (rafPending) return;
-                rafPending = true;
-                requestAnimationFrame(() => {
-                rafPending = false;
-                render();
-                });
-            }
+        for (let r = 0; r < rows; r++) {
+          // fast path: rows outside the 2-row erase block
+          if (r < rStart || r >= rStart + BOX_ROWS) {
+            out += grid[r] + "\n";
+            continue;
+          }
 
-            function setCursor(e) {
-                const rect = binary.getBoundingClientRect();
+          const base = grid[r];
+          let rowArr = base.split("");
 
-                // Because #binary is overscanned and translated -24px,-24px,
-                // rect.left/top are negative; this math still correctly maps.
-                const x = e.clientX - rect.left + OFFSET_X_PX;
-                const y = e.clientY - rect.top + OFFSET_Y_PX;
+          // erase 2 columns in this row (2x2 total across 2 rows)
+          for (let c = cStart; c < cStart + BOX_COLS; c++) {
+            if (c >= 0 && c < cols) rowArr[c] = " ";
+          }
 
-                const { w, h } = measureChar();
+          out += rowArr.join("") + "\n";
+        }
 
-                cursorCol = Math.floor(x / w);
-                cursorRow = Math.floor(y / h);
+        binary.textContent = out;
+      }
 
-                scheduleRender();
-            }
+      function scheduleRender() {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
+          render();
+        });
+      }
 
-            window.addEventListener("mousemove", setCursor);
+      function shiftColumnsDown() {
+        if (!rows || !cols) return;
 
-            window.addEventListener(
-                "touchmove",
-                (e) => {
-                const t = e.touches[0];
-                setCursor(t);
-                },
-                { passive: true }
-            );
+        // Convert each row to a mutable array once
+        const mat = new Array(rows);
+        for (let r = 0; r < rows; r++) mat[r] = grid[r].split("");
 
-            window.addEventListener("resize", buildGrid);
+        // For each column, decide if it advances this tick
+        for (let c = 0; c < cols; c++) {
+          colAcc[c] += 1;
 
-            buildGrid();
-            /*
-            function measureChar() {
-                // Create a hidden probe that matches #binary styles
-                const probe = document.createElement("span");
-                const cs = getComputedStyle(binary);
+          if (colAcc[c] < colSpeed[c]) continue;
+          colAcc[c] = 0;
 
-                probe.textContent = "0";
-                probe.style.position = "fixed";
-                probe.style.left = "-9999px";
-                probe.style.top = "-9999px";
-                probe.style.visibility = "hidden";
-                probe.style.fontFamily = cs.fontFamily;
-                probe.style.fontSize = cs.fontSize;
-                probe.style.lineHeight = cs.lineHeight;
-                probe.style.whiteSpace = "pre";
+          // take bottom char, move it to top, shift everything down
+          const bottom = mat[rows - 1][c];
 
-                document.body.appendChild(probe);
-                const rect = probe.getBoundingClientRect();
-                probe.remove();
+          for (let r = rows - 1; r > 0; r--) {
+            mat[r][c] = mat[r - 1][c];
+          }
 
-                return { w: rect.width || 1, h: rect.height || 1 };
-            }
+          // new top char: sometimes wrap bottom, sometimes spawn fresh bit for variety
+          mat[0][c] = Math.random() < 0.65 ? randBit() : bottom;
 
-            function buildPattern() {
-                const { w, h } = measureChar();
+          // occasionally change speed so it feels alive
+          if (Math.random() < 0.01) {
+            colSpeed[c] = randInt(1, 7);
+          }
+        }
 
-                // Add padding so we never under-fill due to rounding
-                const cols = Math.ceil(window.innerWidth / w) + 2;
-                const rows = Math.ceil(window.innerHeight / h) + 2;
+        // Rebuild grid strings
+        for (let r = 0; r < rows; r++) grid[r] = mat[r].join("");
+      }
 
-                // Binary noise (looks better than stripes)
-                let out = "";
-                for (let r = 0; r < rows; r++) {
-                let line = "";
-                for (let c = 0; c < cols; c++) line += Math.random() < 0.5 ? "0" : "1";
-                out += line + "\n";
-                }
-                binary.textContent = out;
-            }
+      function startRain() {
+        if (timerId) clearInterval(timerId);
+        timerId = setInterval(() => {
+          shiftColumnsDown();
+          scheduleRender();
+        }, tickMs);
+      }
 
-            buildPattern();
-            window.addEventListener("resize", buildPattern);
+      function setCursor(e) {
+        const rect = binary.getBoundingClientRect();
 
-            function setCursorVars(e) {
-                const rect = binary.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                binary.style.setProperty("--x", x + "px");
-                binary.style.setProperty("--y", y + "px");
-            }
+        // Because #binary is overscanned and translated -24px,-24px,
+        // rect.left/top are negative; this math still correctly maps.
+        const x = e.clientX - rect.left + OFFSET_X_PX;
+        const y = e.clientY - rect.top + OFFSET_Y_PX;
 
-            window.addEventListener("mousemove", setCursorVars);
+        const { w, h } = measureChar();
 
-            window.addEventListener(
-                "touchmove",
-                (e) => {
-                const t = e.touches[0];
-                setCursorVars(t);
-                },
-                { passive: true }
-            );
-            */
-        </script>
+        cursorCol = Math.floor(x / w);
+        cursorRow = Math.floor(y / h);
 
-    </body>
-    
+        scheduleRender();
+      }
+
+      window.addEventListener("mousemove", setCursor);
+
+      window.addEventListener(
+        "touchmove",
+        (e) => {
+          const t = e.touches[0];
+          setCursor(t);
+        },
+        { passive: true }
+      );
+
+      window.addEventListener("resize", () => {
+        buildGrid();
+        startRain();
+      });
+
+      buildGrid();
+      startRain();
+    </script>
+  </body>
 </html>
-    

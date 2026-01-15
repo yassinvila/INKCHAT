@@ -127,6 +127,12 @@ Icons automatically adjust based on weather codes and time of day.
 - **Arrival times**: Minutes until arrival
 - **Auto-update**: Refreshes on schedule
 
+### Memory Management
+- **Static JSON Documents**: Uses `StaticJsonDocument<30000>` allocated once at startup and reused
+- **No Heap Fragmentation**: Avoids repeated malloc/free cycles that can fragment RAM over long-term operation
+- **Weather Icons in Flash**: Bitmap data stored in Flash memory (`PROGMEM`) to preserve RAM
+- **Global Arrays**: Train and weather data use static arrays defined at compile time
+
 ##  Pin Configuration
 
 The e-ink display connects to the ESP32 via SPI. Pin mappings are defined in `platformio.ini` and configured through the GxEPD2 library.
