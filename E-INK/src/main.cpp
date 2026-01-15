@@ -341,6 +341,13 @@ void drawBootLogo() {
 bool wifiConnect() {
   String ssid, pass;
   
+  // TESTING: Skip saved credentials, always go to AP setup
+  Serial.println("TESTING MODE: Skipping saved credentials. Starting AP setup...");
+  startAPMode();
+  return false;
+  
+  // Re-enable this code after testing
+  /*
   // Try saved credentials once; otherwise go straight to AP setup
   if (loadCreds(ssid, pass)) {
     Serial.print("Found saved SSID: ");
@@ -356,6 +363,7 @@ bool wifiConnect() {
 
   startAPMode();
   return false;
+  */
 }
 
 // Connect to WiFi in STA mode with timeout and display feedback
@@ -884,12 +892,12 @@ void updateWeatherPartial() {
     if (weatherPage == 0) {
       display.setCursor(ICON_L_X + 30, labelY - 20);
       display.print("Yesterday");
-      display.setCursor(ICON_M_X + 80, labelY + 10);
+      display.setCursor(ICON_M_X + 80, labelY + 20);
       display.print("Today");
       display.setCursor(ICON_R_X + 50, labelY - 10);
       display.print("Tomorrow");
     } else if (weatherPage == 1) {
-      display.setCursor(ICON_L_X + 50, labelY - 20);
+      display.setCursor(ICON_L_X + 50, labelY - 10);
       display.print("Today");
       display.setCursor(ICON_M_X + 45, labelY + 30);
       display.print("Tomorrow");
